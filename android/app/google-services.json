@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "7573410033",
+    "project_id": "stormbuddi-19981",
+    "storage_bucket": "stormbuddi-19981.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:7573410033:android:934db6fa4b85f896615950",
+        "android_client_info": {
+          "package_name": "com.stormbuddi"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCBrWnx9A3VB_CgSW9Vw7psxvnfFY2jAOk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
