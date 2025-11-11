@@ -30,10 +30,7 @@ import Icon from 'react-native-vector-icons/FontAwesome';
 // Import reusable components
 import Header from '../components/Header';
 import Card from '../components/Card';
-import Button from '../components/Button';
-import CreateInvoiceModal from '../components/CreateInvoiceModal';
 import PaymentModal from '../components/PaymentModal';
-import FloatingActionButton from '../components/FloatingActionButton';
 import PageLoader from '../components/PageLoader';
 import ErrorMessage from '../components/ErrorMessage';
 import NotificationListModal from '../components/NotificationListModal';
@@ -99,7 +96,6 @@ const Invoice = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const [invoices, setInvoices] = useState([]);
   const [error, setError] = useState(null);
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
@@ -225,25 +221,6 @@ const Invoice = ({ navigation }) => {
 
   const handleNotificationPress = () => {
     setShowNotificationModal(true);
-  };
-
-  const handleCreateInvoice = () => {
-    setShowCreateModal(true);
-  };
-
-  const handleCreateModalClose = () => {
-    setShowCreateModal(false);
-  };
-
-  const handleCreateModalSubmit = (formData) => {
-    // Refresh the invoices list to show the newly created invoice
-    fetchInvoices();
-  };
-
-  const handleInvoicePress = (invoice) => {
-    console.log('Invoice pressed:', invoice.id);
-    // Open payment modal on card press as well
-    handlePaymentPress(invoice);
   };
 
   const handlePaymentPress = (invoice) => {
@@ -459,22 +436,11 @@ const Invoice = ({ navigation }) => {
           <View style={styles.emptyState}>
             <Text style={styles.emptyStateText}>No invoices found</Text>
             <Text style={styles.emptyStateSubtext}>
-              Create your first invoice to get started
+              Invoices will appear here once they are available.
             </Text>
           </View>
         )}
       </ScrollView>
-
-      <FloatingActionButton
-        onPress={handleCreateInvoice}
-        icon="+"
-      />
-
-      <CreateInvoiceModal
-        visible={showCreateModal}
-        onClose={handleCreateModalClose}
-        onSubmit={handleCreateModalSubmit}
-      />
 
       <PaymentModal
         visible={showPaymentModal}
