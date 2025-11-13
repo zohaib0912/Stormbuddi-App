@@ -13,7 +13,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { clearAuthData } from '../utils/tokenStorage';
 import { getToken } from '../utils/tokenStorage';
 import { getUserProfile, updateUserProfile } from '../utils/userProfileStorage';
-import { subscribe } from '../utils/eventBus';
+import { subscribe, emit } from '../utils/eventBus';
 import FCMTokenService from '../services/FCMTokenService';
 import { colors } from '../theme/colors';
 import { useToast } from '../contexts/ToastContext';
@@ -157,18 +157,25 @@ const DrawerContent = ({ navigation, state }) => {
 
   const performLogout = async () => {
     try {
-      const response = await fetch('http://192.168.1.36:8000/api/mobile/auth/logout', {
+      const token = await getToken();
+      const response = await fetch('https://app.stormbuddi.com/api/mobile/auth/logout', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           'X-Requested-With': 'XMLHttpRequest',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         },
       });
 
-      const data = await response.json();
+      let data = null;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        console.warn('Logout response could not be parsed as JSON:', parseError);
+      }
 
-      if (data.success) {
+      if (response.ok && data?.success) {
         // Remove FCM token from backend before clearing local data
         try {
           await FCMTokenService.removeFCMToken();
@@ -180,6 +187,7 @@ const DrawerContent = ({ navigation, state }) => {
 
         // Clear stored tokens and user data
         await clearAuthData();
+        emit('auth:logout');
         
         // Show success toast
         showSuccess('Logged out successfully');
@@ -195,6 +203,7 @@ const DrawerContent = ({ navigation, state }) => {
       } else {
         // Even if API fails, clear local data
         await clearAuthData();
+        emit('auth:logout');
         // Show success toast
         showSuccess('Logged out successfully');
         // Reset navigation stack
@@ -209,6 +218,7 @@ const DrawerContent = ({ navigation, state }) => {
       console.error('Logout error:', error);
       // Clear local data even if network fails
       await clearAuthData();
+      emit('auth:logout');
       // Show success toast
       showSuccess('Logged out successfully');
       // Reset navigation stack
@@ -293,34 +303,35 @@ const DrawerContent = ({ navigation, state }) => {
         ))}
       </View>
 
-      {/* Logout Confirmation Modal */}
       <Modal
         visible={showLogoutConfirm}
-        transparent={true}
+        transparent
         animationType="fade"
         onRequestClose={() => setShowLogoutConfirm(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.confirmModal}>
-            <Text style={styles.confirmTitle}>Confirm Logout</Text>
-            <Text style={styles.confirmMessage}>Are you sure you want to logout?</Text>
-            <View style={styles.confirmButtonContainer}>
+        <View style={styles.logoutModalOverlay}>
+          <View style={styles.logoutModal}>
+            <Text style={styles.logoutTitle}>Confirm Logout</Text>
+            <Text style={styles.logoutMessage}>
+              Are you sure you want to logout?
+            </Text>
+            <View style={styles.logoutButtonRow}>
               <TouchableOpacity
-                style={[styles.confirmButton, styles.cancelButton]}
+                style={[styles.logoutButton, styles.logoutCancelButton]}
                 onPress={() => setShowLogoutConfirm(false)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <Text style={styles.logoutCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.confirmButton, styles.logoutButton]}
+                style={[styles.logoutButton, styles.logoutConfirmButton]}
                 onPress={() => {
                   setShowLogoutConfirm(false);
                   performLogout();
                 }}
                 activeOpacity={0.7}
               >
-                <Text style={styles.logoutButtonText}>Logout</Text>
+                <Text style={styles.logoutConfirmText}>Logout</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -478,69 +489,77 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     letterSpacing: 0.5,
   },
-  modalOverlay: {
+  logoutModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 24,
   },
-  confirmModal: {
+  logoutModal: {
     backgroundColor: colors.white,
-    borderRadius: 16,
-    padding: 24,
-    width: '85%',
-    maxWidth: 400,
+    borderRadius: 20,
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    width: '100%',
+    maxWidth: 360,
     shadowColor: colors.shadowColor,
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 2,
     },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.25,
     shadowRadius: 8,
-    elevation: 8,
+    elevation: 12,
   },
-  confirmTitle: {
+  logoutTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: colors.text,
     marginBottom: 12,
     textAlign: 'center',
   },
-  confirmMessage: {
-    fontSize: 16,
+  logoutMessage: {
+    fontSize: 15,
     color: colors.textSecondary,
-    marginBottom: 24,
     textAlign: 'center',
     lineHeight: 22,
+    marginBottom: 24,
   },
-  confirmButtonContainer: {
+  logoutButtonRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-  confirmButton: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 6,
-  },
-  cancelButton: {
-    backgroundColor: colors.border,
-  },
   logoutButton: {
-    backgroundColor: colors.error || '#D32F2F',
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 26,
+    alignItems: 'center',
+    borderWidth: 1,
   },
-  cancelButtonText: {
+  logoutCancelButton: {
+    marginRight: 10,
+    borderColor: colors.buttonSecondaryBorder,
+    backgroundColor: colors.buttonSecondary,
+  },
+  logoutConfirmButton: {
+    marginLeft: 10,
+    borderColor: colors.buttonPrimary,
+    backgroundColor: colors.buttonPrimary,
+  },
+  logoutCancelText: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.text,
+    color: colors.buttonSecondaryText,
   },
-  logoutButtonText: {
+  logoutConfirmText: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.white,
+    color: colors.buttonPrimaryText,
+  },
+  confirmButtonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
 });
 

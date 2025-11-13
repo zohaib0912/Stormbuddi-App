@@ -22,6 +22,7 @@ import { storeToken, storeUserData } from '../utils/tokenStorage';
 import NotificationService from '../services/NotificationService';
 import usePageLoader from '../hooks/usePageLoader';
 import { colors } from '../theme/colors';
+import { emit } from '../utils/eventBus';
 
 const { width, height } = Dimensions.get('window');
 
@@ -120,6 +121,8 @@ const Login = ({ navigation }) => {
         console.log('Login successful:', result);
         console.log('User data:', result.user);
         console.log('Access token:', result.token);
+
+        emit('auth:login-success', { user: result.user });
         
         // Reset navigation stack to prevent going back to login
         navigation.reset({
