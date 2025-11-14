@@ -10,11 +10,17 @@ import {
 const ImageGallery = ({ 
   images = [],
   onImageDelete,
+  onImagePress,
   title = 'Images'
 }) => {
   const renderImage = (image, index) => (
     <View key={index} style={styles.imageContainer}>
-      <Image source={{ uri: image.uri }} style={styles.image} />
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onPress={() => onImagePress && onImagePress(image)}
+      >
+        <Image source={{ uri: image.uri }} style={styles.image} />
+      </TouchableOpacity>
       {onImageDelete && (
         <TouchableOpacity 
           style={styles.deleteButton} 

@@ -29,17 +29,27 @@ const Header = ({
   const insets = useSafeAreaInsets();
   const [userName, setUserName] = useState(userNameProp || '');
   const [userAvatar, setUserAvatar] = useState(userAvatarProp || '');
+  const [avatarVersion, setAvatarVersion] = useState(Date.now());
+  const buildAvatarUri = (uri) => {
+    if (!uri) return null;
+    const separator = uri.includes('?') ? '&' : '?';
+    return `${uri}${separator}cb=${avatarVersion}`;
+  };
+  const updateAvatar = (uri) => {
+    setUserAvatar(uri || '');
+    setAvatarVersion(Date.now());
+  };
 
   useEffect(() => {
     if (userNameProp) setUserName(userNameProp);
-    if (userAvatarProp) setUserAvatar(userAvatarProp);
+    if (userAvatarProp) updateAvatar(userAvatarProp);
   }, [userNameProp, userAvatarProp]);
 
   useEffect(() => {
     // Listen for profile updates to refresh header info
     const unsubscribe = subscribe('profile:updated', (payload) => {
       if (payload?.name) setUserName(payload.name);
-      if (payload?.avatarUrl) setUserAvatar(payload.avatarUrl);
+      if (payload?.avatarUrl) updateAvatar(payload.avatarUrl);
     });
 
     // Fetch only if not provided via props
@@ -51,7 +61,7 @@ const Header = ({
         const cached = await getUserProfile();
         if (cached && !cancelled) {
           if (cached.name) setUserName(cached.name);
-          if (cached.avatarUrl) setUserAvatar(cached.avatarUrl);
+          if (cached.avatarUrl) updateAvatar(cached.avatarUrl);
         }
         const token = await getToken();
         if (!token) return;
@@ -87,7 +97,7 @@ const Header = ({
         const avatar = root?.avatar_url || root?.avatar || root?.profile_photo_url || '';
         if (!cancelled) {
           if (name) setUserName(name);
-          if (avatar) setUserAvatar(avatar);
+          if (avatar) updateAvatar(avatar);
           // Only update stored fields we actually received (avoid overwriting with empty)
           const partial = {};
           if (name) partial.name = name;
@@ -136,7 +146,7 @@ const Header = ({
         {userName ? (
           <View style={styles.userInfo}>
             {userAvatar ? (
-              <Image source={{ uri: userAvatar }} style={styles.avatar} />
+              <Image source={{ uri: buildAvatarUri(userAvatar) }} style={styles.avatar} />
             ) : (
               <View style={[styles.avatar, styles.avatarPlaceholder]}>
                 <Text style={styles.avatarInitial}>

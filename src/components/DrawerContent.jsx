@@ -23,19 +23,29 @@ const DrawerContent = ({ navigation, state }) => {
   const { showSuccess } = useToast();
   const [userName, setUserName] = useState('');
   const [userAvatar, setUserAvatar] = useState('');
+  const [avatarVersion, setAvatarVersion] = useState(Date.now());
+  const buildAvatarUri = (uri) => {
+    if (!uri) return null;
+    const separator = uri.includes('?') ? '&' : '?';
+    return `${uri}${separator}cb=${avatarVersion}`;
+  };
+  const updateAvatar = (uri) => {
+    setUserAvatar(uri || '');
+    setAvatarVersion(Date.now());
+  };
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   useEffect(() => {
     const unsub = subscribe('profile:updated', (payload) => {
       if (payload?.name) setUserName(payload.name);
-      if (payload?.avatarUrl) setUserAvatar(payload.avatarUrl);
+      if (payload?.avatarUrl) updateAvatar(payload.avatarUrl);
     });
     (async () => {
       try {
         const cached = await getUserProfile();
         if (cached) {
           if (cached.name) setUserName(cached.name);
-          if (cached.avatarUrl) setUserAvatar(cached.avatarUrl);
+          if (cached.avatarUrl) updateAvatar(cached.avatarUrl);
         }
         const token = await getToken();
         if (!token) return;
@@ -64,10 +74,10 @@ const DrawerContent = ({ navigation, state }) => {
         const name = root?.name || root?.username || '';
         const avatar = root?.avatar_url || root?.avatar || root?.profile_photo_url || '';
         if (name) setUserName(name);
-        if (avatar) setUserAvatar(avatar);
+        if (avatar) updateAvatar(avatar);
         const partial = {};
         if (name) partial.name = name;
-        if (avatar) partial.avatarUrl = avatar;
+          if (avatar) partial.avatarUrl = avatar;
         if (partial.name || partial.avatarUrl) {
           try { await updateUserProfile(partial); } catch (_) {}
         }
@@ -237,7 +247,7 @@ const DrawerContent = ({ navigation, state }) => {
       <View style={styles.userHeader}>
         <View style={styles.avatarContainer}>
           {userAvatar ? (
-            <Image source={{ uri: userAvatar }} style={styles.userAvatar} />
+            <Image source={{ uri: buildAvatarUri(userAvatar) }} style={styles.userAvatar} />
           ) : (
             <View style={[styles.userAvatar, styles.userAvatarPlaceholder]}>
               <Text style={styles.userInitial}>{userName?.charAt(0)?.toUpperCase() || '?'}</Text>

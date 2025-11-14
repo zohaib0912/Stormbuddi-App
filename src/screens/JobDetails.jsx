@@ -1322,12 +1322,14 @@ const JobDetails = ({ navigation, route }) => {
     }
     
     // Default rendering for other sections
-    // Show toast message for proposals instead of allowing upload
-    const isProposalSection = sectionName === 'proposals';
+    // Restrict uploads for certain sections that must be handled in Web CRM
+    const restrictedUploadSections = ['proposals', 'invoices'];
+    const isRestrictedSection = restrictedUploadSections.includes(sectionName);
     
     const handleUploadPress = () => {
-      if (isProposalSection) {
-        showInfo('Proposal can only be uploaded from Web CRM');
+      if (isRestrictedSection) {
+        const sectionLabel = sectionName === 'proposals' ? 'Proposal' : 'Invoice';
+        showInfo(`${sectionLabel} can only be uploaded from Web CRM`);
       } else {
         handleFileUpload(sectionName, null);
       }
@@ -1494,23 +1496,7 @@ const JobDetails = ({ navigation, route }) => {
 
         {/* Invoices Section */}
         <View ref={(ref) => sectionRefs.current['invoices'] = ref}>
-          <SectionHeader title="Invoices" />
-          <UploadButton
-            title="Upload Invoice"
-            subtitle="Click here to upload invoice files"
-            supportedFormats="Supported formats: PDF, DOC, DOCX, XLS, XLSX, JPG, PNG"
-            onPress={() => handleFileUpload('invoices', null)}
-            isImageUpload={false}
-          />
-          {invoices.map((file) => (
-            <FileCard
-              key={file.id}
-              fileName={file.fileName}
-              fileType={file.fileType}
-              onView={() => handleFileView(file)}
-              onDownload={() => handleFileDownload(file)}
-            />
-          ))}
+          {renderFileSection('Invoices', invoices, 'invoices')}
         </View>
 
         {/* Before & After Images Section */}
@@ -1527,6 +1513,7 @@ const JobDetails = ({ navigation, route }) => {
           <ImageGallery
             images={beforeImages}
             title="Before Images"
+            onImagePress={handleFileView}
           />
 
           <UploadButton
@@ -1539,6 +1526,7 @@ const JobDetails = ({ navigation, route }) => {
           <ImageGallery
             images={afterImages}
             title="After Images"
+            onImagePress={handleFileView}
           />
         </View>
 
