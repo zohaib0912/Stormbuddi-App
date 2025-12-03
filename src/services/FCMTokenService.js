@@ -76,83 +76,50 @@ class FCMTokenService {
   }
 
   async removeFCMToken() {
-    const authToken = await getToken();
-    
-    if (!authToken) {
-      console.log('No auth token found, skipping FCM token removal');
-      return false;
-    }
-
-    const headers = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'Authorization': `Bearer ${authToken}`,
-      'X-Requested-With': 'XMLHttpRequest', // Add this for Laravel
-    };
-
-    const handleSuccess = (response) => {
-      if (response?.data?.success) {
-        console.log('FCM token removed successfully:', response.data);
-        return true;
+    try {
+      const authToken = await getToken();
+      
+      if (!authToken) {
+        console.log('No auth token found, skipping FCM token removal');
+        return false;
       }
 
-      console.error('Failed to remove FCM token:', response?.data?.message);
-      return false;
-    };
-
-    const handleError = (error, context = 'primary') => {
-      console.error(
-        context === 'fallback'
-          ? 'Fallback removal attempt failed'
-          : 'Error removing FCM token',
-        error
+      const response = await axios.delete(
+        `${this.baseURL}/fcm-token`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${authToken}`,
+            'X-Requested-With': 'XMLHttpRequest', // Add this for Laravel
+          },
+        }
       );
 
-      if (error?.response) {
+      if (response.data.success) {
+        console.log('FCM token removed successfully:', response.data);
+        return true;
+      } else {
+        console.error('Failed to remove FCM token:', response.data.message);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error removing FCM token:', error);
+      
+      if (error.response) {
         console.error('Response data:', error.response.data);
         console.error('Response status:', error.response.status);
-
+        
+        // Handle specific error cases
         if (error.response.status === 404) {
           console.error('❌ Backend endpoint not found. Please add the route to your Laravel backend.');
           console.error('Required route: DELETE /api/mobile/fcm-token');
         } else if (error.response.status === 401) {
           console.error('❌ Authentication failed. Token may be expired.');
-        } else if (error.response.status === 405) {
-          console.error('❌ DELETE method not allowed on backend route. Falling back to POST /fcm-token/remove');
         }
       }
-    };
-
-    try {
-      const response = await axios.delete(
-        `${this.baseURL}/fcm-token`,
-        { headers }
-      );
-
-      return handleSuccess(response);
-    } catch (error) {
-      const shouldFallback =
-        error?.response?.status === 405 ||
-        error?.response?.data?.message?.includes('DELETE method is not supported');
-
-      handleError(error);
-
-      if (!shouldFallback) {
-        return false;
-      }
-
-      try {
-        const fallbackResponse = await axios.post(
-          `${this.baseURL}/fcm-token/remove`,
-          {},
-          { headers }
-        );
-
-        return handleSuccess(fallbackResponse);
-      } catch (fallbackError) {
-        handleError(fallbackError, 'fallback');
-        return false;
-      }
+      
+      return false;
     }
   }
 }

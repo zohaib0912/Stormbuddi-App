@@ -29,27 +29,48 @@ const Header = ({
   const insets = useSafeAreaInsets();
   const [userName, setUserName] = useState(userNameProp || '');
   const [userAvatar, setUserAvatar] = useState(userAvatarProp || '');
-  const [avatarVersion, setAvatarVersion] = useState(Date.now());
-  const buildAvatarUri = (uri) => {
-    if (!uri) return null;
-    const separator = uri.includes('?') ? '&' : '?';
-    return `${uri}${separator}cb=${avatarVersion}`;
-  };
-  const updateAvatar = (uri) => {
-    setUserAvatar(uri || '');
-    setAvatarVersion(Date.now());
-  };
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     if (userNameProp) setUserName(userNameProp);
-    if (userAvatarProp) updateAvatar(userAvatarProp);
+    if (userAvatarProp) setUserAvatar(userAvatarProp);
   }, [userNameProp, userAvatarProp]);
+
+  const fetchUnreadCount = async () => {
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      const response = await fetch('https://app.stormbuddi.com/api/mobile/notifications/unread-count', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && typeof data.data === 'number') {
+          setUnreadCount(data.data);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching unread count:', error);
+    }
+  };
 
   useEffect(() => {
     // Listen for profile updates to refresh header info
     const unsubscribe = subscribe('profile:updated', (payload) => {
       if (payload?.name) setUserName(payload.name);
-      if (payload?.avatarUrl) updateAvatar(payload.avatarUrl);
+      if (payload?.avatarUrl) setUserAvatar(payload.avatarUrl);
+    });
+
+    // Listen for notification updates
+    const unsubscribeNotifications = subscribe('notifications:updated', () => {
+      fetchUnreadCount();
     });
 
     // Fetch only if not provided via props
@@ -61,7 +82,7 @@ const Header = ({
         const cached = await getUserProfile();
         if (cached && !cancelled) {
           if (cached.name) setUserName(cached.name);
-          if (cached.avatarUrl) updateAvatar(cached.avatarUrl);
+          if (cached.avatarUrl) setUserAvatar(cached.avatarUrl);
         }
         const token = await getToken();
         if (!token) return;
@@ -97,7 +118,7 @@ const Header = ({
         const avatar = root?.avatar_url || root?.avatar || root?.profile_photo_url || '';
         if (!cancelled) {
           if (name) setUserName(name);
-          if (avatar) updateAvatar(avatar);
+          if (avatar) setUserAvatar(avatar);
           // Only update stored fields we actually received (avoid overwriting with empty)
           const partial = {};
           if (name) partial.name = name;
@@ -110,7 +131,19 @@ const Header = ({
         console.warn('Header: failed to fetch profile for header info', e);
       }
     })();
-    return () => { cancelled = true; unsubscribe && unsubscribe(); };
+    
+    // Fetch unread notification count
+    fetchUnreadCount();
+    
+    // Set up interval to periodically check for unread notifications
+    const intervalId = setInterval(fetchUnreadCount, 30000); // Check every 30 seconds
+    
+    return () => { 
+      cancelled = true; 
+      unsubscribe && unsubscribe(); 
+      unsubscribeNotifications && unsubscribeNotifications();
+      clearInterval(intervalId);
+    };
   }, [userNameProp, userAvatarProp]);
 
   const handleMenuPress = () => {
@@ -146,7 +179,7 @@ const Header = ({
         {userName ? (
           <View style={styles.userInfo}>
             {userAvatar ? (
-              <Image source={{ uri: buildAvatarUri(userAvatar) }} style={styles.avatar} />
+              <Image source={{ uri: userAvatar }} style={styles.avatar} />
             ) : (
               <View style={[styles.avatar, styles.avatarPlaceholder]}>
                 <Text style={styles.avatarInitial}>
@@ -172,7 +205,7 @@ const Header = ({
         {showNotification && (
           <TouchableOpacity style={styles.notificationButton} onPress={onNotificationPress}>
             <Icon name="notifications" size={24} color="#333" />
-            <View style={styles.notificationDot} />
+            {unreadCount > 0 && <View style={styles.notificationDot} />}
           </TouchableOpacity>
         )}
       </View>

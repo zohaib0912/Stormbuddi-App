@@ -11,6 +11,9 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" tools:replace="android:maxSdkVersion" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <!-- Location permissions for Google Maps -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
@@ -65,5 +68,11 @@
         android:name="com.google.firebase.messaging.default_notification_color"
         android:resource="@color/colorAccent"
         tools:replace="android:resource" />
+      
+      <!-- Google Maps API Key -->
+      <!-- TODO: Replace YOUR_GOOGLE_MAPS_API_KEY with your actual Google Maps API key -->
+      <meta-data
+        android:name="com.google.android.geo.API_KEY"
+        android:value="AIzaSyAOaDH4S6rmAAxVplU8Qc_KfbWVWUxeGxE" />
     </application>
 </manifest>

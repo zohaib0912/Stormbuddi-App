@@ -13,7 +13,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { clearAuthData } from '../utils/tokenStorage';
 import { getToken } from '../utils/tokenStorage';
 import { getUserProfile, updateUserProfile } from '../utils/userProfileStorage';
-import { subscribe, emit } from '../utils/eventBus';
+import { subscribe } from '../utils/eventBus';
 import FCMTokenService from '../services/FCMTokenService';
 import { colors } from '../theme/colors';
 import { useToast } from '../contexts/ToastContext';
@@ -23,29 +23,19 @@ const DrawerContent = ({ navigation, state }) => {
   const { showSuccess } = useToast();
   const [userName, setUserName] = useState('');
   const [userAvatar, setUserAvatar] = useState('');
-  const [avatarVersion, setAvatarVersion] = useState(Date.now());
-  const buildAvatarUri = (uri) => {
-    if (!uri) return null;
-    const separator = uri.includes('?') ? '&' : '?';
-    return `${uri}${separator}cb=${avatarVersion}`;
-  };
-  const updateAvatar = (uri) => {
-    setUserAvatar(uri || '');
-    setAvatarVersion(Date.now());
-  };
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   useEffect(() => {
     const unsub = subscribe('profile:updated', (payload) => {
       if (payload?.name) setUserName(payload.name);
-      if (payload?.avatarUrl) updateAvatar(payload.avatarUrl);
+      if (payload?.avatarUrl) setUserAvatar(payload.avatarUrl);
     });
     (async () => {
       try {
         const cached = await getUserProfile();
         if (cached) {
           if (cached.name) setUserName(cached.name);
-          if (cached.avatarUrl) updateAvatar(cached.avatarUrl);
+          if (cached.avatarUrl) setUserAvatar(cached.avatarUrl);
         }
         const token = await getToken();
         if (!token) return;
@@ -74,10 +64,10 @@ const DrawerContent = ({ navigation, state }) => {
         const name = root?.name || root?.username || '';
         const avatar = root?.avatar_url || root?.avatar || root?.profile_photo_url || '';
         if (name) setUserName(name);
-        if (avatar) updateAvatar(avatar);
+        if (avatar) setUserAvatar(avatar);
         const partial = {};
         if (name) partial.name = name;
-          if (avatar) partial.avatarUrl = avatar;
+        if (avatar) partial.avatarUrl = avatar;
         if (partial.name || partial.avatarUrl) {
           try { await updateUserProfile(partial); } catch (_) {}
         }
@@ -110,6 +100,12 @@ const DrawerContent = ({ navigation, state }) => {
       label: 'CUSTOMERS',
       icon: 'people',
       screen: 'Customers',
+    },
+    {
+      key: 'Canvassing',
+      label: 'CANVASSING',
+      icon: 'map',
+      screen: 'Canvassing',
     },
     {
       key: 'InspectionReport',
@@ -167,25 +163,18 @@ const DrawerContent = ({ navigation, state }) => {
 
   const performLogout = async () => {
     try {
-      const token = await getToken();
       const response = await fetch('https://app.stormbuddi.com/api/mobile/auth/logout', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           'X-Requested-With': 'XMLHttpRequest',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         },
       });
 
-      let data = null;
-      try {
-        data = await response.json();
-      } catch (parseError) {
-        console.warn('Logout response could not be parsed as JSON:', parseError);
-      }
+      const data = await response.json();
 
-      if (response.ok && data?.success) {
+      if (data.success) {
         // Remove FCM token from backend before clearing local data
         try {
           await FCMTokenService.removeFCMToken();
@@ -197,7 +186,6 @@ const DrawerContent = ({ navigation, state }) => {
 
         // Clear stored tokens and user data
         await clearAuthData();
-        emit('auth:logout');
         
         // Show success toast
         showSuccess('Logged out successfully');
@@ -213,7 +201,6 @@ const DrawerContent = ({ navigation, state }) => {
       } else {
         // Even if API fails, clear local data
         await clearAuthData();
-        emit('auth:logout');
         // Show success toast
         showSuccess('Logged out successfully');
         // Reset navigation stack
@@ -228,7 +215,6 @@ const DrawerContent = ({ navigation, state }) => {
       console.error('Logout error:', error);
       // Clear local data even if network fails
       await clearAuthData();
-      emit('auth:logout');
       // Show success toast
       showSuccess('Logged out successfully');
       // Reset navigation stack
@@ -247,7 +233,7 @@ const DrawerContent = ({ navigation, state }) => {
       <View style={styles.userHeader}>
         <View style={styles.avatarContainer}>
           {userAvatar ? (
-            <Image source={{ uri: buildAvatarUri(userAvatar) }} style={styles.userAvatar} />
+            <Image source={{ uri: userAvatar }} style={styles.userAvatar} />
           ) : (
             <View style={[styles.userAvatar, styles.userAvatarPlaceholder]}>
               <Text style={styles.userInitial}>{userName?.charAt(0)?.toUpperCase() || '?'}</Text>
@@ -313,35 +299,34 @@ const DrawerContent = ({ navigation, state }) => {
         ))}
       </View>
 
+      {/* Logout Confirmation Modal */}
       <Modal
         visible={showLogoutConfirm}
-        transparent
+        transparent={true}
         animationType="fade"
         onRequestClose={() => setShowLogoutConfirm(false)}
       >
-        <View style={styles.logoutModalOverlay}>
-          <View style={styles.logoutModal}>
-            <Text style={styles.logoutTitle}>Confirm Logout</Text>
-            <Text style={styles.logoutMessage}>
-              Are you sure you want to logout?
-            </Text>
-            <View style={styles.logoutButtonRow}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.confirmModal}>
+            <Text style={styles.confirmTitle}>Confirm Logout</Text>
+            <Text style={styles.confirmMessage}>Are you sure you want to logout?</Text>
+            <View style={styles.confirmButtonContainer}>
               <TouchableOpacity
-                style={[styles.logoutButton, styles.logoutCancelButton]}
+                style={[styles.confirmButton, styles.cancelButton]}
                 onPress={() => setShowLogoutConfirm(false)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.logoutCancelText}>Cancel</Text>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.logoutButton, styles.logoutConfirmButton]}
+                style={[styles.confirmButton, styles.logoutButton]}
                 onPress={() => {
                   setShowLogoutConfirm(false);
                   performLogout();
                 }}
                 activeOpacity={0.7}
               >
-                <Text style={styles.logoutConfirmText}>Logout</Text>
+                <Text style={styles.logoutButtonText}>Logout</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -499,77 +484,69 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     letterSpacing: 0.5,
   },
-  logoutModalOverlay: {
+  modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 24,
   },
-  logoutModal: {
+  confirmModal: {
     backgroundColor: colors.white,
-    borderRadius: 20,
-    paddingVertical: 28,
-    paddingHorizontal: 24,
-    width: '100%',
-    maxWidth: 360,
+    borderRadius: 16,
+    padding: 24,
+    width: '85%',
+    maxWidth: 400,
     shadowColor: colors.shadowColor,
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 4,
     },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.3,
     shadowRadius: 8,
-    elevation: 12,
+    elevation: 8,
   },
-  logoutTitle: {
+  confirmTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: colors.text,
     marginBottom: 12,
     textAlign: 'center',
   },
-  logoutMessage: {
-    fontSize: 15,
+  confirmMessage: {
+    fontSize: 16,
     color: colors.textSecondary,
+    marginBottom: 24,
     textAlign: 'center',
     lineHeight: 22,
-    marginBottom: 24,
-  },
-  logoutButtonRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  logoutButton: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 26,
-    alignItems: 'center',
-    borderWidth: 1,
-  },
-  logoutCancelButton: {
-    marginRight: 10,
-    borderColor: colors.buttonSecondaryBorder,
-    backgroundColor: colors.buttonSecondary,
-  },
-  logoutConfirmButton: {
-    marginLeft: 10,
-    borderColor: colors.buttonPrimary,
-    backgroundColor: colors.buttonPrimary,
-  },
-  logoutCancelText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.buttonSecondaryText,
-  },
-  logoutConfirmText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.buttonPrimaryText,
   },
   confirmButtonContainer: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  confirmButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    alignItems: 'center',
     justifyContent: 'center',
+    marginHorizontal: 6,
+  },
+  cancelButton: {
+    backgroundColor: colors.border,
+  },
+  logoutButton: {
+    backgroundColor: colors.error || '#D32F2F',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  logoutButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.white,
   },
 });
 

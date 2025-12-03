@@ -44,6 +44,10 @@ import messaging from '@react-native-firebase/messaging';
 
 
 const { width, height } = Dimensions.get('window');
+// Calculate card width to show exactly 2 cards horizontally
+// Formula: (screen width - left padding - gap between cards - right padding) / 2
+// Left padding: 8px, Gap: 12px, Right padding: 16px (to match section margin)
+const ALERT_CARD_WIDTH = (width - 8 - 12 - 40) / 2;
 
 // Mock data structure - this will be replaced with API calls
 const mockData = {
@@ -112,16 +116,20 @@ const Dashboard = ({ navigation }) => {
   // Use notifications hook to check permission status
   const { isPermissionGranted, loading: notificationLoading } = useNotifications();
 
-  // Fetch storm alerts from XWeather API
-  const fetchStormAlerts = async () => {
+  // Fetch storm alerts from backend (Texas storms endpoint)
+  const fetchStormAlerts = async (token) => {
     try {
-      // Default coordinates (you can make this dynamic based on user location)
-      const lat = 40.7128; // New York coordinates as default
-      const lng = -74.0060;
-      
-      const response = await fetch(
-        `https://data.api.xweather.com/stormreports/${lat},${lng}?format=json&from=-6month&limit=2&filter=hail&client_id=4zoCQsFVwfxqohoH4REoY&client_secret=unRA0svfLjc6qTU0mUcJYaT9CSUAKvmuDAJQwMAN`
-      );
+      const response = await fetch('https://app.stormbuddi.com/api/nexrad/all-texas-storms', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      console.log('Storm alerts response:', response);
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -129,29 +137,57 @@ const Dashboard = ({ navigation }) => {
 
       const stormData = await response.json();
       
-      if (stormData.success && stormData.response) {
-        console.log('Storm alerts fetched successfully:', stormData);
-        
-        // Map XWeather API response to expected format
-        const mappedAlerts = stormData.response.map((alert, index) => ({
-          id: alert.id || `storm-${index}`,
-          location: alert.place ? `${alert.place.name}, ${alert.place.state?.toUpperCase()}` : 'Unknown Location',
-          type: alert.report?.type || 'hail',
-          radarId: alert.report?.wfo || 'N/A',
-          timestamp: alert.report?.dateTimeISO || new Date().toISOString(),
-          movement: {
-            direction: alert.relativeTo?.bearingENG || 'N',
-            speed: 0 // Speed not available in this API response
-          },
-          hailProbability: 0, // Not available in this API response
-          maxHailSize: alert.report?.detail?.size || 0,
-        }));
-        
-        return mappedAlerts;
-      } else {
+      if (!stormData?.success || !Array.isArray(stormData?.response)) {
         console.warn('Invalid storm data response:', stormData);
-        return mockData.stormAlerts; // Fallback to mock data
+        return mockData.stormAlerts;
       }
+
+      const rawAlerts = stormData.response;
+
+      if (!rawAlerts.length) {
+        console.warn('No storm alerts returned from backend', stormData);
+        return mockData.stormAlerts;
+      }
+      
+      const mappedAlerts = rawAlerts.slice(0, 10).map((alert, index) => {
+        // Extract location from place object
+        const place = alert.place || {};
+        const locationParts = [
+          place.name || place.county,
+          place.state,
+        ].filter(Boolean);
+        const location = locationParts.join(', ') || 'Unknown Location';
+
+        // Extract timestamp from report.dateTimeISO
+        const timestamp = alert.report?.dateTimeISO || alert.date || new Date().toISOString();
+
+        // Extract type from report.type
+        const type = alert.report?.type?.toLowerCase() || 'hail';
+
+        // Extract max hail size from maxHailSize or report.detail.hailIN
+        const maxHailSize = Number(
+          alert.maxHailSize || 
+          alert.report?.detail?.hailIN || 
+          0
+        );
+
+        return {
+          id: alert.id?.toString() || `storm-${index}`,
+          location: location,
+          type: type,
+          radarId: alert.report?.reporter || 'N/A',
+          timestamp: timestamp,
+          totalEvents: Number(alert.totalEvents ?? alert.report?.totalEvents ?? 0),
+          movement: {
+            direction: 'N/A',
+            speed: 0,
+          },
+          hailProbability: 0,
+          maxHailSize: maxHailSize,
+        };
+      });
+
+      return mappedAlerts;
     } catch (err) {
       console.error('Storm alerts fetch error:', err);
       return mockData.stormAlerts; // Fallback to mock data
@@ -224,7 +260,7 @@ const Dashboard = ({ navigation }) => {
             'Authorization': `Bearer ${token}`,
           },
         }),
-        fetchStormAlerts(),
+        fetchStormAlerts(token),
         fetchLeads(token)
       ]);
 
@@ -599,7 +635,7 @@ const Dashboard = ({ navigation }) => {
         )}
 
         {/* Hail Impact Map Section */}
-        {/* {!loading && !error && (
+        {/* {!shouldShowLoader && !error && (
           <Card
             showHeader={true}
             headerTitle="Hail Impact Map"
@@ -615,25 +651,132 @@ const Dashboard = ({ navigation }) => {
         {/* Storm Alerts Section */}
         {!shouldShowLoader && !error && (
           <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>Storm Alerts</Text>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleRow}>
+                <Icon name="warning" size={22} color={colors.warning} style={styles.sectionIcon} />
+                <Text style={styles.sectionTitle}>Storm Alerts</Text>
+              </View>
+              {data.stormAlerts.length > 0 && (
+                <View style={styles.alertBadge}>
+                  <Text style={styles.alertBadgeText}>{data.stormAlerts.length}</Text>
+                </View>
+              )}
+            </View>
             <View style={styles.alertsContainer}>
-              {data.stormAlerts.map((alert) => {
-                const formattedTime = new Date(alert.timestamp).toLocaleString();
-                return (
-                  <Card key={alert.id} style={styles.alertCard}>
-                    <Text style={styles.alertLocation}>{alert.location}</Text>
-                    <Text style={styles.alertType}>{alert.type}</Text>
-                    <Text style={styles.alertDetail}>Radar ID: {alert.radarId}</Text>
-                    <Text style={styles.alertDetail}>Location: {alert.location}</Text>
-                    <Text style={styles.alertDetail}>Time: {formattedTime}</Text>
-                    <Text style={styles.alertDetail}>
-                      Movement: {alert.movement.direction} at {alert.movement.speed} mph
-                    </Text>
-                    <Text style={styles.alertDetail}>Hail Probability: {alert.hailProbability}%</Text>
-                    <Text style={styles.alertDetail}>Max Hail Size: {alert.maxHailSize} inches</Text>
-                  </Card>
-                );
-              })}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.alertsScrollContent}
+              >
+                {data.stormAlerts.map((alert, index) => {
+                  const formattedTime = new Date(alert.timestamp).toLocaleString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  });
+                  
+                  // Determine severity based on hail size
+                  const getSeverityColor = (hailSize) => {
+                    if (!hailSize || hailSize === 0) return colors.textSecondary;
+                    if (hailSize >= 1.5) return colors.error; // Severe
+                    if (hailSize >= 1.0) return colors.warning; // Moderate
+                    return colors.info; // Light
+                  };
+                  
+                  const getSeverityLabel = (hailSize) => {
+                    if (!hailSize || hailSize === 0) return 'N/A';
+                    if (hailSize >= 1.5) return 'Severe';
+                    if (hailSize >= 1.0) return 'Moderate';
+                    return 'Light';
+                  };
+                  
+                  const severityColor = getSeverityColor(alert.maxHailSize);
+                  const severityLabel = getSeverityLabel(alert.maxHailSize);
+                  
+                  return (
+                    <Card
+                      key={alert.id}
+                      style={[
+                        styles.alertCard,
+                        index === data.stormAlerts.length - 1 && styles.alertCardLast,
+                      ]}
+                    >
+                      {/* Card Header with Location */}
+                      <View style={styles.alertCardHeader}>
+                        <View style={styles.alertHeaderLeft}>
+                          <Icon name="location-on" size={16} color={colors.primary} />
+                          <Text style={styles.alertLocation} numberOfLines={1}>
+                            {alert.location}
+                          </Text>
+                        </View>
+                      </View>
+                      
+                      {/* Storm Type with Severity Badge and Icon */}
+                      <View style={styles.alertTypeRow}>
+                        <View style={[styles.severityBadge, { backgroundColor: severityColor + '15' }]}>
+                          <View style={[styles.severityDot, { backgroundColor: severityColor }]} />
+                          <Text style={[styles.severityText, { color: severityColor }]}>
+                            {severityLabel}
+                          </Text>
+                        </View>
+                        <Icon 
+                          name={alert.type === 'hail' ? 'grain' : 'cloud'} 
+                          size={18} 
+                          color={colors.primary} 
+                          style={styles.alertTypeIcon}
+                        />
+                        <Text style={styles.alertType}>
+                          {alert.type ? alert.type.charAt(0).toUpperCase() + alert.type.slice(1) : 'Storm'}
+                        </Text>
+                      </View>
+                      
+                      {/* Metrics Grid */}
+                      <View style={styles.alertMetricsGrid}>
+                        <View style={[styles.alertMetricCard, styles.alertMetricCardFirst]}>
+                          <View style={styles.alertMetricIconContainer}>
+                            <Icon name="grain" size={16} color={colors.primary} />
+                          </View>
+                          <View style={styles.alertMetricContent}>
+                            <Text style={styles.alertMetricLabel}>Max Hail</Text>
+                            <Text style={[styles.alertMetricValue, { color: severityColor }]}>
+                              {alert.maxHailSize ? `${alert.maxHailSize}"` : '--'}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={[styles.alertMetricCard, styles.alertMetricCardLast]}>
+                          <View style={styles.alertMetricIconContainer}>
+                            <Icon name="flash-on" size={16} color={colors.primary} />
+                          </View>
+                          <View style={styles.alertMetricContent}>
+                            <Text style={styles.alertMetricLabel}>Events</Text>
+                            <Text style={styles.alertMetricValue}>
+                              {Number.isFinite(alert.totalEvents) && alert.totalEvents > 0
+                                ? alert.totalEvents
+                                : '--'}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                      
+                      {/* Divider */}
+                      <View style={styles.alertDivider} />
+                      
+                      {/* Footer Info */}
+                      <View style={styles.alertFooter}>
+                        <View style={styles.alertFooterItem}>
+                          <Icon name="access-time" size={12} color={colors.textSecondary} />
+                          <Text style={styles.alertFooterText}>{formattedTime}</Text>
+                        </View>
+                        <View style={styles.alertFooterItem}>
+                          <Icon name="radar" size={12} color={colors.textSecondary} />
+                          <Text style={styles.alertFooterText}>{alert.radarId || 'N/A'}</Text>
+                        </View>
+                      </View>
+                    </Card>
+                  );
+                })}
+              </ScrollView>
             </View>
           </View>
         )}
@@ -641,7 +784,9 @@ const Dashboard = ({ navigation }) => {
         {/* Leads Section */}
         {!shouldShowLoader && !error && (
           <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>Leads</Text>
+            <View style={styles.leadsSectionHeader}>
+              <Text style={styles.sectionTitle}>Leads</Text>
+            </View>
             <Card
               style={styles.leadsCard}
             >
@@ -775,12 +920,38 @@ const styles = StyleSheet.create({
   sectionContainer: {
     marginBottom: 24,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sectionIcon: {
+    marginRight: 8,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: colors.text,
-    marginHorizontal: 16,
-    marginBottom: 16,
+  },
+  alertBadge: {
+    backgroundColor: colors.warning + '20',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    minWidth: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  alertBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.warning,
   },
   mapCard: {
     marginHorizontal: 16,
@@ -801,42 +972,160 @@ const styles = StyleSheet.create({
     color: colors.textLight,
   },
   alertsContainer: {
+    paddingTop: 4,
+  },
+  alertsScrollContent: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    justifyContent: 'space-between',
+    paddingLeft: 8,
+    paddingRight: 16,
+    paddingBottom: 4,
   },
   alertCard: {
-    flex: 1,
-    marginHorizontal: 4,
+    width: ALERT_CARD_WIDTH,
+    minWidth: ALERT_CARD_WIDTH,
+    marginRight: 12,
     backgroundColor: colors.cardBackground,
-    borderRadius: 8,
+    borderRadius: 12,
     shadowColor: colors.shadowColor,
     shadowOffset: {
       width: 0,
       height: 4,
     },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    flexShrink: 0,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  alertCardLast: {
+    marginRight: 0,
+  },
+  alertCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  alertHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
   },
   alertLocation: {
     fontSize: 14,
-    fontWeight: 'bold',
-    color: colors.primary,
-    marginBottom: 4,
-    textTransform: 'capitalize',
+    fontWeight: '700',
+    color: colors.text,
+    marginLeft: 4,
+    flex: 1,
+  },
+  severityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 8,
+    flexShrink: 0,
+  },
+  severityDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 4,
+  },
+  severityText: {
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  alertTypeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  alertTypeIcon: {
+    marginLeft: 6,
+    marginRight: 6,
   },
   alertType: {
     fontSize: 12,
     color: colors.textSecondary,
-    marginBottom: 8,
+    fontWeight: '500',
     textTransform: 'capitalize',
   },
-  alertDetail: {
-    fontSize: 11,
+  alertMetricsGrid: {
+    flexDirection: 'column',
+    marginBottom: 8,
+  },
+  alertMetricCard: {
+    width: '100%',
+    flexDirection: 'row',
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    padding: 6,
+    alignItems: 'center',
+  },
+  alertMetricCardFirst: {
+    marginBottom: 6,
+  },
+  alertMetricCardLast: {
+    marginBottom: 0,
+  },
+  alertMetricIconContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: colors.primaryBackground,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  alertMetricContent: {
+    flex: 1,
+  },
+  alertMetricLabel: {
+    fontSize: 9,
     color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
     marginBottom: 2,
-    lineHeight: 14,
+    fontWeight: '600',
+  },
+  alertMetricValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  alertDivider: {
+    height: 1,
+    backgroundColor: colors.borderLight,
+    marginVertical: 6,
+  },
+  alertFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  alertFooterItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  alertFooterText: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    marginLeft: 4,
+    flex: 1,
+  },
+  leadsSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 16,
   },
   leadsCard: {
     marginHorizontal: 16,

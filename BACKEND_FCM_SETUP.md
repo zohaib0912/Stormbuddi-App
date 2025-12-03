@@ -7,7 +7,6 @@ Based on your existing route, you need to add the DELETE route as well:
 Route::middleware('mobile.auth')->group(function () {
     Route::post('fcm-token', 'Mobile\MobileAuthController@updateFCMToken');
     Route::delete('fcm-token', 'Mobile\MobileAuthController@removeFCMToken'); // Add this line
-    Route::post('fcm-token/remove', 'Mobile\MobileAuthController@removeFCMToken'); // Optional fallback if DELETE isn't available
 });
 ```
 
@@ -16,9 +15,6 @@ Route::middleware('mobile.auth')->group(function () {
 ### 1. Add the DELETE Route
 
 You already have the POST route, just add the DELETE route to your existing `mobile.auth` middleware group.
-
-> **Can't add DELETE?**  
-> Temporarily register `Route::post('fcm-token/remove', ...)` so the app can fall back to a POST request when your server blocks DELETE requests (common on some shared hosts/proxies).
 
 ### 2. Update Your Controller Method
 

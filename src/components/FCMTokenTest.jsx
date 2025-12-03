@@ -111,9 +111,6 @@ const FCMTokenTest = () => {
         <Text style={styles.endpointText}>
           DELETE: https://app.stormbuddi.com/api/mobile/fcm-token
         </Text>
-        <Text style={styles.endpointText}>
-          Fallback POST (remove): https://app.stormbuddi.com/api/mobile/fcm-token/remove
-        </Text>
       </View>
     </ScrollView>
   );

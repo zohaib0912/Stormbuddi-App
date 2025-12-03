@@ -6,11 +6,13 @@ import {
   ImageBackground,
   StyleSheet,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   SafeAreaView,
   StatusBar,
   Dimensions,
   Alert,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
@@ -22,7 +24,6 @@ import { storeToken, storeUserData } from '../utils/tokenStorage';
 import NotificationService from '../services/NotificationService';
 import usePageLoader from '../hooks/usePageLoader';
 import { colors } from '../theme/colors';
-import { emit } from '../utils/eventBus';
 
 const { width, height } = Dimensions.get('window');
 
@@ -121,8 +122,6 @@ const Login = ({ navigation }) => {
         console.log('Login successful:', result);
         console.log('User data:', result.user);
         console.log('Access token:', result.token);
-
-        emit('auth:login-success', { user: result.user });
         
         // Reset navigation stack to prevent going back to login
         navigation.reset({
@@ -140,108 +139,110 @@ const Login = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
-      
-      {/* Global Page Loader */}
-      <PageLoader 
-        visible={shouldShowLoader}
-        message="Signing in..."
-      />
-      
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+        
+        {/* Global Page Loader */}
+        <PageLoader 
+          visible={shouldShowLoader}
+          message="Signing in..."
+        />
+        
 
-      {/* Only show content when not loading */}
-      {!shouldShowLoader && (
-        <>
-          {/* Background Image with Construction Worker */}
-          <ImageBackground
-            source={require('../assets/images/sdf.jpg')}
-            style={styles.backgroundImage}
-            resizeMode="cover"
-          >
-            {/* Overlay for better text readability */}
-            <View style={styles.overlay} />
-            
-            <KeyboardAvoidingView 
-              style={styles.keyboardAvoidingView}
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        {/* Only show content when not loading */}
+        {!shouldShowLoader && (
+          <>
+            {/* Background Image with Construction Worker */}
+            <ImageBackground
+              source={require('../assets/images/sdf.jpg')}
+              style={styles.backgroundImage}
+              resizeMode="cover"
             >
-              {/* StormBuddi Logo */}
-              <View style={styles.logoContainer}>
-                <Text style={styles.logoText}>StormBuddi</Text>
-              </View>
-
-              {/* Login Form */}
-              <View style={styles.formContainer}>
-                {/* Email Input */}
-                <View style={styles.inputContainer}>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Email"
-                    placeholderTextColor="#666"
-                    value={email}
-                    onChangeText={setEmail}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType="email-address"
-                    returnKeyType="next"
-                  />
+              {/* Overlay for better text readability */}
+              <View style={styles.overlay} />
+              
+              <KeyboardAvoidingView 
+                style={styles.keyboardAvoidingView}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+              >
+                {/* StormBuddi Logo */}
+                <View style={styles.logoContainer}>
+                  <Text style={styles.logoText}>StormBuddi</Text>
                 </View>
 
-                {/* Password Input */}
-                <View style={styles.inputContainer}>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Password"
-                    placeholderTextColor="#666"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry={!showPassword}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    returnKeyType="done"
-                    onSubmitEditing={handleLogin}
-                  />
-                  <TouchableOpacity
-                    style={styles.eyeIcon}
-                    onPress={togglePasswordVisibility}
-                  >
-                    <Icon
-                      name={showPassword ? 'eye-off' : 'eye'}
-                      size={20}
-                      color="#666"
+                {/* Login Form */}
+                <View style={styles.formContainer}>
+                  {/* Email Input */}
+                  <View style={styles.inputContainer}>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Email"
+                      placeholderTextColor="#666"
+                      value={email}
+                      onChangeText={setEmail}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="email-address"
+                      returnKeyType="next"
                     />
+                  </View>
+
+                  {/* Password Input */}
+                  <View style={styles.inputContainer}>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Password"
+                      placeholderTextColor="#666"
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry={!showPassword}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      returnKeyType="done"
+                      onSubmitEditing={handleLogin}
+                    />
+                    <TouchableOpacity
+                      style={styles.eyeIcon}
+                      onPress={togglePasswordVisibility}
+                    >
+                      <Icon
+                        name={showPassword ? 'eye-off' : 'eye'}
+                        size={20}
+                        color="#666"
+                      />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Error Message */}
+                  {error && (
+                    <View style={styles.errorContainer}>
+                      <Text style={styles.errorText}>{error}</Text>
+                    </View>
+                  )}
+
+                  {/* Forgot Password Link */}
+                  <TouchableOpacity style={styles.forgotPasswordContainer} onPress={handleForgotPassword}>
+                    <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+                  </TouchableOpacity>
+
+                  {/* Login Button */}
+                  <TouchableOpacity
+                    style={[styles.loginButton, shouldShowLoader && styles.loginButtonDisabled]}
+                    onPress={handleLogin}
+                    disabled={shouldShowLoader}
+                    activeOpacity={shouldShowLoader ? 1 : 0.7}
+                  >
+                    <Text style={styles.loginButtonText}>Login</Text>
                   </TouchableOpacity>
                 </View>
-
-                {/* Error Message */}
-                {error && (
-                  <View style={styles.errorContainer}>
-                    <Text style={styles.errorText}>{error}</Text>
-                  </View>
-                )}
-
-                {/* Forgot Password Link */}
-                <TouchableOpacity style={styles.forgotPasswordContainer} onPress={handleForgotPassword}>
-                  <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-                </TouchableOpacity>
-
-                {/* Login Button */}
-                <TouchableOpacity
-                  style={[styles.loginButton, shouldShowLoader && styles.loginButtonDisabled]}
-                  onPress={handleLogin}
-                  disabled={shouldShowLoader}
-                  activeOpacity={shouldShowLoader ? 1 : 0.7}
-                >
-                  <Text style={styles.loginButtonText}>Login</Text>
-                </TouchableOpacity>
-              </View>
-            </KeyboardAvoidingView>
-          </ImageBackground>
-        </>
-      )}
-    </SafeAreaView>
+              </KeyboardAvoidingView>
+            </ImageBackground>
+          </>
+        )}
+      </SafeAreaView>
+    </TouchableWithoutFeedback>
   );
 };
 
@@ -313,7 +314,8 @@ const styles = StyleSheet.create({
   eyeIcon: {
     position: 'absolute',
     right: 20,
-    top: 18,
+    top: '50%',
+    transform: [{ translateY: -18 }],
     padding: 8,
     justifyContent: 'center',
     alignItems: 'center',

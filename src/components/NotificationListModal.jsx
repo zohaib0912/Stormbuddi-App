@@ -11,12 +11,12 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { getToken } from '../utils/tokenStorage';
+import { emit } from '../utils/eventBus';
 
 const NotificationListModal = ({ visible, onClose }) => {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [senderNames, setSenderNames] = useState({});
 
   useEffect(() => {
     if (visible) {
@@ -46,60 +46,47 @@ const NotificationListModal = ({ visible, onClose }) => {
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.data) {
-          setNotifications(data.data);
+          // Sort by date (newest first) and take only the latest 6 notifications
+          const sorted = data.data.sort((a, b) => {
+            const dateA = new Date(a.created_at || a.createdAt || 0);
+            const dateB = new Date(b.created_at || b.createdAt || 0);
+            return dateB - dateA;
+          });
+          setNotifications(sorted.slice(0, 6));
         } else {
           // Fallback to mock data if API structure is different
-          setNotifications(getMockNotifications());
+          const mockData = getMockNotifications();
+          const sorted = mockData.sort((a, b) => {
+            const dateA = new Date(a.createdAt || 0);
+            const dateB = new Date(b.createdAt || 0);
+            return dateB - dateA;
+          });
+          setNotifications(sorted.slice(0, 6));
         }
       } else {
         // Fallback to mock data on error
-        setNotifications(getMockNotifications());
+        const mockData = getMockNotifications();
+        const sorted = mockData.sort((a, b) => {
+          const dateA = new Date(a.createdAt || 0);
+          const dateB = new Date(b.createdAt || 0);
+          return dateB - dateA;
+        });
+        setNotifications(sorted.slice(0, 6));
       }
     } catch (error) {
       console.error('Error fetching notifications:', error);
       setError('Failed to load notifications');
       // Fallback to mock data
-      setNotifications(getMockNotifications());
+      const mockData = getMockNotifications();
+      const sorted = mockData.sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0);
+        const dateB = new Date(b.createdAt || 0);
+        return dateB - dateA;
+      });
+      setNotifications(sorted.slice(0, 6));
     } finally {
       setLoading(false);
     }
-  };
-
-  const fetchSenderName = async (senderId) => {
-    try {
-      const token = await getToken();
-      if (!token) return 'Unknown User';
-
-      const response = await fetch(`https://app.stormbuddi.com/api/mobile/users/${senderId}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.data) {
-          return data.data.name || data.data.first_name || `User #${senderId}`;
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching sender name:', error);
-    }
-    return `User #${senderId}`;
-  };
-
-  const getSenderName = (senderId) => {
-    if (senderNames[senderId]) {
-      return senderNames[senderId];
-    }
-    // Fetch sender name if not cached
-    fetchSenderName(senderId).then(name => {
-      setSenderNames(prev => ({ ...prev, [senderId]: name }));
-    });
-    return `User #${senderId}`;
   };
 
   const fetchUnreadCount = async () => {
@@ -236,11 +223,23 @@ const NotificationListModal = ({ visible, onClose }) => {
       });
 
       if (response.ok) {
-        setNotifications(prev => 
-          prev.map(notif => 
+        setNotifications(prev => {
+          // Mark the notification as read
+          const updated = prev.map(notif => 
             notif.id === notificationId ? { ...notif, read: true } : notif
-          )
-        );
+          );
+          
+          // Sort by date (newest first) and take only the latest 6 notifications
+          const sorted = updated.sort((a, b) => {
+            const dateA = new Date(a.created_at || a.createdAt || 0);
+            const dateB = new Date(b.created_at || b.createdAt || 0);
+            return dateB - dateA;
+          });
+          
+          return sorted.slice(0, 6);
+        });
+        // Emit event to update header unread count
+        emit('notifications:updated');
       }
     } catch (error) {
       console.error('Error marking notification as read:', error);
@@ -262,9 +261,21 @@ const NotificationListModal = ({ visible, onClose }) => {
       });
 
       if (response.ok) {
-        setNotifications(prev => 
-          prev.map(notif => ({ ...notif, read: true }))
-        );
+        setNotifications(prev => {
+          // Mark all as read
+          const updated = prev.map(notif => ({ ...notif, read: true }));
+          
+          // Sort by date (newest first) and take only the latest 6 notifications
+          const sorted = updated.sort((a, b) => {
+            const dateA = new Date(a.created_at || a.createdAt || 0);
+            const dateB = new Date(b.created_at || b.createdAt || 0);
+            return dateB - dateA;
+          });
+          
+          return sorted.slice(0, 6);
+        });
+        // Emit event to update header unread count
+        emit('notifications:updated');
       }
     } catch (error) {
       console.error('Error marking all notifications as read:', error);
@@ -362,11 +373,6 @@ const NotificationListModal = ({ visible, onClose }) => {
                         <Text style={styles.notificationMessage}>
                           {notification.message}
                         </Text>
-                        {notification.sender_id && (
-                          <Text style={styles.senderText}>
-                            From: {getSenderName(notification.sender_id)}
-                          </Text>
-                        )}
                       </View>
                       <Text style={styles.notificationTime}>
                         {formatDate(notification.created_at)}
@@ -546,12 +552,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     lineHeight: 20,
-  },
-  senderText: {
-    fontSize: 12,
-    color: '#8E8E93',
-    fontStyle: 'italic',
-    marginTop: 2,
   },
   notificationTime: {
     fontSize: 12,

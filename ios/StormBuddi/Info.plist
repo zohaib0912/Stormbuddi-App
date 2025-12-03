@@ -33,7 +33,7 @@
 		<true/>
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string></string>
+	<string>Canvassing needs access to your location to show your position on the map.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

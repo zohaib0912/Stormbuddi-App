@@ -163,7 +163,7 @@ const NotificationSettingsModal = ({ visible, onClose }) => {
                 </View>
               </View>
 
-              {/* FCM Token Display */}
+              {/* FCM Token Display
               {fcmToken && (
                 <View style={styles.section}>
                   <Text style={styles.sectionTitle}>Device Information</Text>
@@ -174,7 +174,7 @@ const NotificationSettingsModal = ({ visible, onClose }) => {
                     </Text>
                   </View>
                 </View>
-              )}
+              )} */}
 
               {/* Status Information */}
               <View style={styles.section}>
