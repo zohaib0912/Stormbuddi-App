@@ -105,17 +105,7 @@ class NotificationService {
     try {
       // On iOS, we must register for remote messages before getting the token
       if (Platform.OS === 'ios') {
-        // First check if we have permission
-        const authStatus = await messaging().hasPermission();
-        const hasPermission = authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
-                            authStatus === messaging.AuthorizationStatus.PROVISIONAL;
-        
-        if (!hasPermission) {
-          console.log('[NotificationService] No permission granted yet, cannot get FCM token');
-          return null;
-        }
-
-        // Register device for remote messages
+        // Register device for remote messages (don't check permission first - try it)
         try {
           await messaging().registerDeviceForRemoteMessages();
           console.log('[NotificationService] Device registered for remote messages before getting token');
