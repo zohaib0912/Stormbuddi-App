@@ -89,12 +89,31 @@ class NotificationService {
       return false;
     }
 
+    // Register device for remote messages on iOS after permission is granted
+    try {
+      await messaging().registerDeviceForRemoteMessages();
+      console.log('[NotificationService] Device registered for remote messages on iOS');
+    } catch (error) {
+      console.error('[NotificationService] Error registering device for remote messages:', error);
+    }
+
     console.log('[NotificationService] Permission granted successfully on iOS');
     return true;
   }
 
   async getFCMToken() {
     try {
+      // On iOS, we must register for remote messages before getting the token
+      if (Platform.OS === 'ios') {
+        try {
+          await messaging().registerDeviceForRemoteMessages();
+          console.log('[NotificationService] Device registered for remote messages before getting token');
+        } catch (error) {
+          // If already registered, this will throw an error - that's okay
+          console.log('[NotificationService] Device may already be registered:', error.message);
+        }
+      }
+      
       const token = await messaging().getToken();
       return token;
     } catch (error) {
