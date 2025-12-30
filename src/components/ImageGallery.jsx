@@ -10,15 +10,24 @@ import {
 const ImageGallery = ({ 
   images = [],
   onImageDelete,
+  onImagePress, // Add this prop
   title = 'Images'
 }) => {
   const renderImage = (image, index) => (
-    <View key={index} style={styles.imageContainer}>
+    <TouchableOpacity 
+      key={index} 
+      style={styles.imageContainer}
+      onPress={() => onImagePress && onImagePress(image, index)} // Make image clickable
+      activeOpacity={0.8}
+    >
       <Image source={{ uri: image.uri }} style={styles.image} />
       {onImageDelete && (
         <TouchableOpacity 
           style={styles.deleteButton} 
-          onPress={() => onImageDelete(index)}
+          onPress={(e) => {
+            e.stopPropagation(); // Prevent triggering onImagePress
+            onImageDelete(index);
+          }}
         >
           <Text style={styles.deleteIcon}>✕</Text>
         </TouchableOpacity>
@@ -26,7 +35,7 @@ const ImageGallery = ({
       <Text style={styles.imageName} numberOfLines={1}>
         {image.name || `Image ${index + 1}`}
       </Text>
-    </View>
+    </TouchableOpacity>
   );
 
   if (images.length === 0) {

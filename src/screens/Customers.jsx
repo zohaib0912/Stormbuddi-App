@@ -6,11 +6,11 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   ScrollView,
   TouchableOpacity,
@@ -44,8 +44,8 @@ const Customers = ({ navigation }) => {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   
-  // Use the page loader hook
-  const { shouldShowLoader, startLoading, stopLoading } = usePageLoader(true);
+  // Use the page loader hook - start with false, only show when screen is focused
+  const { shouldShowLoader, startLoading, stopLoading, resetLoader } = usePageLoader(false);
 
   // Fetch customers from backend API
   const fetchCustomers = async () => {
@@ -117,9 +117,17 @@ const Customers = ({ navigation }) => {
     }
   };
 
-  useEffect(() => {
-    fetchCustomers();
-  }, []);
+  // Only fetch data and show loader when Customers screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchCustomers();
+      
+      // Cleanup: stop loader when screen loses focus
+      return () => {
+        resetLoader();
+      };
+    }, [])
+  );
 
   // Filter customers based on search query
   useEffect(() => {
@@ -196,7 +204,7 @@ const Customers = ({ navigation }) => {
   ), [filteredCustomers.length, searchQuery]);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.white} />
       
       {/* Global Page Loader */}
@@ -207,7 +215,7 @@ const Customers = ({ navigation }) => {
 
       {/* Only show content when not loading */}
       {!shouldShowLoader && (
-        <View style={[styles.contentContainer, { paddingBottom: insets.bottom }]}>
+        <View style={styles.contentContainer}>
           {/* Header - Fixed at top */}
           <Header
             title="Maddock"
@@ -280,7 +288,7 @@ const Customers = ({ navigation }) => {
         visible={showNotificationModal}
         onClose={() => setShowNotificationModal(false)}
       />
-    </SafeAreaView>
+    </View>
   );
 };
 

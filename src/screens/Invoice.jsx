@@ -15,11 +15,11 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   ScrollView,
   TouchableOpacity,
@@ -104,8 +104,8 @@ const Invoice = ({ navigation }) => {
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   
-  // Use the new page loader hook
-  const { shouldShowLoader, startLoading, stopLoading } = usePageLoader(true);
+  // Use the new page loader hook - start with false, only show when screen is focused
+  const { shouldShowLoader, startLoading, stopLoading, resetLoader } = usePageLoader(false);
 
   // Fetch invoices from backend API
   const fetchInvoices = async () => {
@@ -217,9 +217,17 @@ const Invoice = ({ navigation }) => {
     }
   };
 
-  useEffect(() => {
-    fetchInvoices();
-  }, []);
+  // Only fetch data and show loader when Invoice screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchInvoices();
+      
+      // Cleanup: stop loader when screen loses focus
+      return () => {
+        resetLoader();
+      };
+    }, [])
+  );
 
 
 
@@ -329,7 +337,7 @@ const Invoice = ({ navigation }) => {
   // If invoice is partially paid, show remaining balance; otherwise show total.
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       
       {/* Global Page Loader */}
@@ -340,7 +348,7 @@ const Invoice = ({ navigation }) => {
       
       {/* Only show content when not loading */}
       {!shouldShowLoader && (
-        <View style={[styles.contentContainer, { paddingBottom: insets.bottom }]}>
+        <View style={styles.contentContainer}>
           {/* Header */}
           <Header
             title="Maddock"
@@ -491,7 +499,7 @@ const Invoice = ({ navigation }) => {
         </View>
       )}
 
-    </SafeAreaView>
+    </View>
   );
 };
 

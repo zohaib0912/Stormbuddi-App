@@ -24,6 +24,26 @@ const DrawerContent = ({ navigation, state }) => {
   const [userName, setUserName] = useState('');
   const [userAvatar, setUserAvatar] = useState('');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [roles, setRoles] = useState([]);
+  const [roleNames, setRoleNames] = useState([]);
+  const [permissions, setPermissions] = useState([]);
+
+ 
+
+  // permission key -> screens it should unlock
+  const permissionScreensMap = {
+    dashboard_view: ['Dashboard'],
+    leads_view: ['Leads'],
+    clients_view: ['Customers'],
+    canvassing_view: ['Canvassing'],
+    estimator_view: ['InspectionReport'],
+    projects_view: ['Jobs'],
+    users_view: ['Settings'],
+    settings_manage: ['Settings'],
+    invoice_setting_view: ['Invoice'],
+    schedules_view: ['Appointment'],
+    profile_view: ['Profile'],
+  };
 
   useEffect(() => {
     const unsub = subscribe('profile:updated', (payload) => {
@@ -75,6 +95,71 @@ const DrawerContent = ({ navigation, state }) => {
     })();
     return () => { unsub && unsub(); };
   }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await getToken();
+        if (!token) return;
+        const res = await fetch('https://app.stormbuddi.com/api/mobile/auth/permissions', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+        if (!res.ok) throw new Error('permissions fetch failed');
+        const json = await res.json();
+        const fetchedRoles = json?.data?.roles || json?.roles || [];
+        const roleIds = fetchedRoles
+          .map((r) => (r?.role_id ?? r))
+          .filter((v) => Number.isInteger(v));
+        const singleRoleId = Number.isInteger(json?.role?.id) ? [json.role.id] : [];
+        const combinedRoleIds = [...new Set([...roleIds, ...singleRoleId])];
+
+        const fetchedRoleNames = [
+          ...fetchedRoles.map((r) => r?.name || r?.role_name).filter(Boolean),
+          ...(json?.role?.name ? [json.role.name] : []),
+        ];
+
+        const fetchedPermissions = json?.data?.permissions || json?.permissions || [];
+
+        console.log('Permissions fetch success', {
+          roleIds: combinedRoleIds,
+          permissions: fetchedPermissions,
+          payload: json,
+        });
+
+        setRoles(combinedRoleIds);
+        setRoleNames(fetchedRoleNames);
+        setPermissions(Array.isArray(fetchedPermissions) ? fetchedPermissions : []);
+      } catch (err) {
+        console.warn('Failed to load permissions', err);
+        setRoles([]);
+        setRoleNames([]);
+        setPermissions([]);
+      }
+    })();
+  }, []);
+
+  const getAllowedScreens = (roleIds = [], permissionList = []) => {
+    const allowed = new Set();
+
+    // permissions first (authoritative)
+    (permissionList || []).forEach((p) => {
+      (permissionScreensMap[p] || []).forEach((s) => allowed.add(s));
+    });
+
+    // fallback to role map if no permissions matched
+    if (!allowed.size && roleIds.length) {
+      roleIds.forEach((id) => (roleIdScreensMap[id] || []).forEach((s) => allowed.add(s)));
+    }
+
+    // final fallback: show nothing (change to show-all if desired)
+    return allowed.size ? Array.from(allowed) : [];
+  };
   const navigationItems = [
     
     {
@@ -149,6 +234,11 @@ const DrawerContent = ({ navigation, state }) => {
       action: 'logout',
     },
   ];
+
+  const allowedScreens = getAllowedScreens(roles, permissions);
+  const filteredNavigationItems = navigationItems.filter((item) => 
+    allowedScreens.includes(item.screen) || item.screen === 'Profile'
+  );
 
   const handleNavigation = (screen) => {
     // Navigate to MainStack first, then to the specific screen
@@ -241,11 +331,16 @@ const DrawerContent = ({ navigation, state }) => {
           )}
         </View>
         <Text style={styles.userName} numberOfLines={1}>{userName || 'User'}</Text>
+        {roleNames.length > 0 && (
+          <Text style={styles.userRole} numberOfLines={1}>
+            {roleNames.join(', ')}
+          </Text>
+        )}
       </View>
 
       {/* Navigation Items */}
       <ScrollView style={styles.navigationContainer}>
-        {navigationItems.map((item) => {
+        {filteredNavigationItems.map((item) => {
           // Check if the current screen is active by looking at the nested stack state
           const mainStackState = state.routes.find(route => route.name === 'MainStack');
           const isActive = mainStackState?.state?.routes[mainStackState.state.index]?.name === item.screen;
@@ -386,6 +481,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     fontWeight: '600',
+    textAlign: 'center',
+  },
+  userRole: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 4,
     textAlign: 'center',
   },
   logoContainer: {

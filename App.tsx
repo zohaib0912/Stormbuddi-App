@@ -12,6 +12,7 @@ import { createDrawerNavigator } from '@react-navigation/drawer';
 import { StatusBar, StyleSheet, useColorScheme, Platform } from 'react-native';
 import {
   SafeAreaProvider,
+  SafeAreaView,
 } from 'react-native-safe-area-context';
 import { isAuthenticated } from './src/utils/tokenStorage';
 import LoadingSpinner from './src/components/LoadingSpinner';
@@ -39,6 +40,16 @@ import { ToastProvider } from './src/contexts/ToastContext';
 
 const Stack = createStackNavigator();
 const Drawer = createDrawerNavigator();
+
+// Wrapper function to automatically wrap all screens with SafeAreaView
+// Header handles top safe area, wrapper handles bottom safe area
+const withSafeArea = (Component: React.ComponentType<any>) => {
+  return (props: any) => (
+    <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
+      <Component {...props} />
+    </SafeAreaView>
+  );
+};
 
 // Custom transition configuration for slide from top
 const slideFromTopTransition = {
@@ -70,30 +81,30 @@ function MainStackNavigator() {
           open: {
             animation: 'timing',
             config: {
-              duration: 300,
+              duration: 500,
             },
           },
           close: {
             animation: 'timing',
             config: {
-              duration: 300,
+              duration: 500,
             },
           },
         },
       }}
     >
-      <Stack.Screen name="Dashboard" component={Dashboard} />
-      <Stack.Screen name="Profile" component={Profile} />
-      <Stack.Screen name="Leads" component={Leads} />
-      <Stack.Screen name="Jobs" component={Jobs} />
-      <Stack.Screen name="Appointment" component={Appointment} />
-      <Stack.Screen name="Proposal" component={Proposal} />
-      <Stack.Screen name="Invoice" component={Invoice} />
-      <Stack.Screen name="Settings" component={Settings} />
-      <Stack.Screen name="JobDetails" component={JobDetails} />
-      <Stack.Screen name="InspectionReport" component={InspectionReport} />
-      <Stack.Screen name="Customers" component={Customers} />
-      <Stack.Screen name="Canvassing" component={Canvassing} />
+      <Stack.Screen name="Dashboard" component={withSafeArea(Dashboard)} />
+      <Stack.Screen name="Profile" component={withSafeArea(Profile)} />
+      <Stack.Screen name="Leads" component={withSafeArea(Leads)} />
+      <Stack.Screen name="Jobs" component={withSafeArea(Jobs)} />
+      <Stack.Screen name="Appointment" component={withSafeArea(Appointment)} />
+      <Stack.Screen name="Proposal" component={withSafeArea(Proposal)} />
+      <Stack.Screen name="Invoice" component={withSafeArea(Invoice)} />
+      <Stack.Screen name="Settings" component={withSafeArea(Settings)} />
+      <Stack.Screen name="JobDetails" component={withSafeArea(JobDetails)} />
+      <Stack.Screen name="InspectionReport" component={withSafeArea(InspectionReport)} />
+      <Stack.Screen name="Customers" component={withSafeArea(Customers)} />
+      <Stack.Screen name="Canvassing" component={withSafeArea(Canvassing)} />
     </Stack.Navigator>
   );
 }
@@ -199,9 +210,9 @@ function App() {
               },
             }}
           >
-            <Stack.Screen name="Login" component={Login} />
-            <Stack.Screen name="ForgotPassword" component={ForgotPassword} />
-            <Stack.Screen name="ResetPassword" component={ResetPassword} />
+            <Stack.Screen name="Login" component={withSafeArea(Login)} />
+            <Stack.Screen name="ForgotPassword" component={withSafeArea(ForgotPassword)} />
+            <Stack.Screen name="ResetPassword" component={withSafeArea(ResetPassword)} />
             <Stack.Screen name="Main" component={DrawerNavigator} />
           </Stack.Navigator>
         </NavigationContainer>

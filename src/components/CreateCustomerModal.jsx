@@ -54,10 +54,8 @@ const CreateCustomerModal = ({
       // Try to fetch subscription plans from API
       // Common endpoint patterns: /subscription-plans, /subscriptions, /plans, /subscription-plans/list
       const possibleEndpoints = [
-        'https://app.stormbuddi.com/api/mobile/subscription-plans',
-        'https://app.stormbuddi.com/api/mobile/subscriptions',
-        'https://app.stormbuddi.com/api/mobile/plans',
-        'https://app.stormbuddi.com/api/subscription-plans',
+        'https://app.stormbuddi.com/api/customer-subscription-plans',
+       
       ];
 
       let plansFetched = false;
@@ -79,8 +77,14 @@ const CreateCustomerModal = ({
             
             // Handle different response structures
             let plansList = [];
-            if (data.success && data.data) {
+            if (data.success && data.plans) {
+              // API returns { success: true, plans: [...] }
+              plansList = Array.isArray(data.plans) ? data.plans : [data.plans];
+            } else if (data.success && data.data) {
+              // Alternative structure: { success: true, data: [...] }
               plansList = Array.isArray(data.data) ? data.data : [data.data];
+            } else if (Array.isArray(data.plans)) {
+              plansList = data.plans;
             } else if (Array.isArray(data.data)) {
               plansList = data.data;
             } else if (Array.isArray(data)) {
@@ -99,7 +103,11 @@ const CreateCustomerModal = ({
               console.log('Fetched subscription plans from API:', plansList);
               plansFetched = true;
               break;
+            } else {
+              console.warn('API returned empty plans array. Response:', data);
             }
+          } else {
+            console.warn(`API request failed with status ${response.status} for endpoint: ${endpoint}`);
           }
         } catch (err) {
           // Try next endpoint
@@ -148,14 +156,14 @@ const CreateCustomerModal = ({
       slideAnim.setValue(SCREEN_WIDTH * 2); // Start off screen at bottom
       Animated.timing(slideAnim, {
         toValue: 0,
-        duration: 300,
+        duration: 500,
         easing: Easing.bezier(0.25, 0.1, 0.25, 1),
         useNativeDriver: true,
       }).start();
     } else {
       Animated.timing(slideAnim, {
         toValue: SCREEN_WIDTH * 2,
-        duration: 250,
+        duration: 400,
         easing: Easing.bezier(0.25, 0.1, 0.25, 1),
         useNativeDriver: true,
       }).start();
@@ -682,7 +690,12 @@ const CreateCustomerModal = ({
               </TouchableOpacity>
               
               {showPackageDropdown && (
-                <View style={styles.dropdownList}>
+                <ScrollView 
+                  style={styles.dropdownList}
+                  nestedScrollEnabled={true}
+                  showsVerticalScrollIndicator={true}
+                  keyboardShouldPersistTaps="handled"
+                >
                   {subscriptionPackages.map((pkg, index) => (
                     <TouchableOpacity
                       key={index}
@@ -703,7 +716,7 @@ const CreateCustomerModal = ({
                       )}
                     </TouchableOpacity>
                   ))}
-                </View>
+                </ScrollView>
               )}
               {errors.subscription_package && (
                 <Text style={styles.errorText}>{errors.subscription_package}</Text>
@@ -857,6 +870,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    overflow: 'hidden',
   },
   dropdownItem: {
     flexDirection: 'row',

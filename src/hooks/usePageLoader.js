@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 
 /**
  * Custom hook for managing page loading state with minimum display time
- * Ensures loader is shown for at least 2 seconds to prevent flickering
+ * Ensures loader is shown for at least 500ms to prevent flickering
  */
-const usePageLoader = (initialLoading = false, minimumDisplayTime = 2000) => {
+const usePageLoader = (initialLoading = false, minimumDisplayTime = 500) => {
   const [isLoading, setIsLoading] = useState(initialLoading);
   const [startTime, setStartTime] = useState(null);
   const [shouldShowLoader, setShouldShowLoader] = useState(initialLoading);

@@ -13,16 +13,17 @@
  * - Data structure is already compatible with typical REST API responses
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   ScrollView,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -44,10 +45,108 @@ import messaging from '@react-native-firebase/messaging';
 
 
 const { width, height } = Dimensions.get('window');
-// Calculate card width to show exactly 2 cards horizontally
-// Formula: (screen width - left padding - gap between cards - right padding) / 2
-// Left padding: 8px, Gap: 12px, Right padding: 16px (to match section margin)
-const ALERT_CARD_WIDTH = (width - 8 - 12 - 40) / 2;
+// Responsive card width calculation for all mobile screen sizes
+// Uses 85% of screen width per card to show first card fully and peek of 2nd card (10-20% visible)
+const ALERT_CARD_WIDTH = Math.max(
+  280, // Minimum width for readability on small screens
+  Math.min(
+    width * 0.5, // 85% of screen width for proper sizing, showing peek of next card
+    400 // Maximum width to prevent cards from being too wide on large screens
+  )
+);
+
+// Hail size colors (same as Canvassing)
+const HAIL_SIZE_COLORS = [
+  { threshold: 0.5, color: '#F9E604', label: '0.5' },
+  { threshold: 1.0, color: '#F99F04', label: '1' },
+  { threshold: 1.25, color: '#F94B04', label: '1.25' },
+  { threshold: 1.5, color: '#FF0099', label: '1.5' },
+  { threshold: 1.75, color: '#D600FF', label: '1.75' },
+  { threshold: 2.0, color: '#9500FF', label: '2' },
+  { threshold: 2.25, color: '#6A00FF', label: '2.25' },
+  { threshold: 2.5, color: '#3300FF', label: '2.5' },
+  { threshold: 2.75, color: '#0094FF', label: '2.75' },
+  { threshold: 3.0, color: '#00C8FF', label: '3' },
+  { threshold: Infinity, color: '#FFFFFF', label: '3+' },
+];
+
+// Get color for hail size (same as Canvassing)
+const getColorForHailSize = (size) => {
+  const defaultColor = 'rgba(255, 255, 255, 0.3)';
+  if (!size && size !== 0) {
+    return defaultColor;
+  }
+  const numericSize = typeof size === 'number' ? size : parseFloat(size);
+  if (Number.isNaN(numericSize)) {
+    return defaultColor;
+  }
+  const entry = HAIL_SIZE_COLORS.find(({ threshold }) => numericSize <= threshold);
+  if (!entry) {
+    return defaultColor;
+  }
+
+  const hex = entry.color.replace('#', '');
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, 0.3)`;
+};
+
+// Map lead status to marker key (same as Canvassing)
+const mapLeadStatusToMarkerKey = (leadStatus) => {
+  if (!leadStatus) return 'default';
+  
+  const mapping = {
+    'Monitoring': 'monitoring',
+    'Inbound Lead': 'inbound-lead',
+    'Outbound Lead': 'outbound-lead',
+    'Lead': 'lead',
+    'Major Damage': 'major-damage',
+    'Very Severe': 'very-severe',
+    'Severe': 'severe',
+    'Slightly Severe': 'slightly-severe',
+    'Not Severe': 'not-severe',
+    'No Status': 'no-status',
+    'Warranty': 'warranty',
+  };
+  
+  return mapping[leadStatus] || 'default';
+};
+
+// Get marker icon source (same as Canvassing)
+const getMarkerIconSource = (markerKey) => {
+  const MARKER_ICON_OPTIONS = [
+    { id: 'default', label: 'Default', value: 'default', image: require('../assets/images/Pull-Contact-Data.png') },
+    { id: 'monitoring', label: 'Monitoring', value: 'monitoring', image: require('../assets/images/Monitoring.png') },
+    { id: 'inbound', label: 'Inbound Lead', value: 'inbound-lead', image: require('../assets/images/Inbound-Lead.png') },
+    { id: 'outbound', label: 'Outbound Lead', value: 'outbound-lead', image: require('../assets/images/Outbound-Lead.png') },
+    { id: 'lead', label: 'Lead', value: 'lead', image: require('../assets/images/Lead.png') },
+    { id: 'major', label: 'Major Damage', value: 'major-damage', image: require('../assets/images/Major-Damage.png') },
+    { id: 'very-severe', label: 'Very Severe', value: 'very-severe', image: require('../assets/images/Very-Severe.png') },
+    { id: 'severe', label: 'Severe', value: 'severe', image: require('../assets/images/Severe.png') },
+    { id: 'slightly-severe', label: 'Slightly Severe', value: 'slightly-severe', image: require('../assets/images/Slightly-Severe.png') },
+    { id: 'not-severe', label: 'Not Severe', value: 'not-severe', image: require('../assets/images/Not-Severe.png') },
+    { id: 'no-status', label: 'No Status', value: 'no-status', image: require('../assets/images/No-Status.png') },
+    { id: 'warranty', label: 'Warranty', value: 'warranty', image: require('../assets/images/Warranty.png') },
+  ];
+  const match = MARKER_ICON_OPTIONS.find((opt) => opt.value === markerKey);
+  return match ? match.image : MARKER_ICON_OPTIONS[0].image;
+};
+
+// Try to import MapView (same as Canvassing)
+let MapView = null;
+let Polygon = null;
+let Marker = null;
+let PROVIDER_GOOGLE = null;
+try {
+  const mapsModule = require('react-native-maps');
+  MapView = mapsModule.default;
+  Polygon = mapsModule.Polygon;
+  Marker = mapsModule.Marker;
+  PROVIDER_GOOGLE = mapsModule.PROVIDER_GOOGLE;
+} catch (error) {
+  console.warn('react-native-maps not available:', error);
+}
 
 // Mock data structure - this will be replaced with API calls
 const mockData = {
@@ -109,9 +208,17 @@ const Dashboard = ({ navigation }) => {
   const [error, setError] = useState(null);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [hasCheckedPermission, setHasCheckedPermission] = useState(false);
+  const [canvassingCustomers, setCanvassingCustomers] = useState([]);
+  const [canvassingPolygons, setCanvassingPolygons] = useState([]);
+  const [canvassingRegion, setCanvassingRegion] = useState({
+    latitude: 40.7128,
+    longitude: -74.0060,
+    latitudeDelta: 0.5,
+    longitudeDelta: 0.5,
+  });
   
-  // Use the new page loader hook
-  const { shouldShowLoader, startLoading, stopLoading } = usePageLoader(true);
+  // Use the new page loader hook - start with false, only show when screen is focused
+  const { shouldShowLoader, startLoading, stopLoading, resetLoader } = usePageLoader(false);
   
   // Use notifications hook to check permission status
   const { isPermissionGranted, loading: notificationLoading } = useNotifications();
@@ -236,6 +343,334 @@ const Dashboard = ({ navigation }) => {
     }
   };
 
+  // Format date as YYYY-MM-DD (same as Canvassing)
+  const formatDateForAPI = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Process GeoJSON data (same as Canvassing)
+  const processGeoJsonData = (data) => {
+    const polygonsArray = [];
+    
+    let geoJsonData = null;
+    
+    if (data.features) {
+      geoJsonData = data;
+    } else if (data.data && data.data.features) {
+      geoJsonData = data.data;
+    } else if (data.success && data.data) {
+      if (data.data.features) {
+        geoJsonData = data.data;
+      } else if (Array.isArray(data.data)) {
+        geoJsonData = { type: 'FeatureCollection', features: data.data };
+      }
+    } else if (Array.isArray(data)) {
+      geoJsonData = { type: 'FeatureCollection', features: data };
+    }
+
+    if (!geoJsonData || !geoJsonData.features) {
+      console.warn('Invalid GeoJSON format:', data);
+      return [];
+    }
+
+    geoJsonData.features.forEach((feature, index) => {
+      if (feature.geometry && feature.geometry.type === 'Polygon') {
+        const coordinates = feature.geometry.coordinates[0];
+        const polygonCoordinates = coordinates.map(coord => ({
+          latitude: coord[1],
+          longitude: coord[0],
+        }));
+
+        const hailSizeValue =
+          feature.properties?.hailsize ||
+          feature.properties?.hail_size ||
+          feature.properties?.max_hail_size ||
+          feature.properties?.min_hail_size;
+
+        polygonsArray.push({
+          id: feature.id || `polygon-${index}`,
+          coordinates: polygonCoordinates,
+          properties: feature.properties || {},
+          fillColor: feature.properties?.color || getColorForHailSize(hailSizeValue),
+          strokeColor: 'transparent',
+          strokeWidth: 0,
+        });
+      } else if (feature.geometry && feature.geometry.type === 'MultiPolygon') {
+        feature.geometry.coordinates.forEach((polygonCoords, polyIndex) => {
+          const coordinates = polygonCoords[0];
+          const polygonCoordinates = coordinates.map(coord => ({
+            latitude: coord[1],
+            longitude: coord[0],
+          }));
+
+          const hailSizeValue =
+            feature.properties?.hailsize ||
+            feature.properties?.hail_size ||
+            feature.properties?.max_hail_size ||
+            feature.properties?.min_hail_size;
+
+          polygonsArray.push({
+            id: feature.id || `multipolygon-${index}-${polyIndex}`,
+            coordinates: polygonCoordinates,
+            properties: feature.properties || {},
+            fillColor: feature.properties?.color || getColorForHailSize(hailSizeValue),
+            strokeColor: 'transparent',
+            strokeWidth: 0,
+          });
+        });
+      }
+    });
+
+    return polygonsArray;
+  };
+
+  // Fetch home data (same as Canvassing)
+  const fetchHomeData = async () => {
+    try {
+      const token = await getToken();
+      if (!token) {
+        throw new Error('No authentication token found. Please login again.');
+      }
+
+      const response = await fetch('https://app.stormbuddi.com/api/mobile/dashboard/home-data', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || `HTTP error! status: ${response.status}`;
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      const rawCustomers =
+        (Array.isArray(data?.customers) && data.customers) ||
+        (Array.isArray(data?.data?.customers) && data.data.customers) ||
+        [];
+
+      const normalizedCustomers = rawCustomers
+        .map((customer, index) => {
+          const latitude = parseFloat(
+            customer.latitude ??
+            customer.lat ??
+            customer.location_lat ??
+            customer.customer_latitude,
+          );
+          const longitude = parseFloat(
+            customer.longitude ??
+            customer.lng ??
+            customer.location_lng ??
+            customer.customer_longitude,
+          );
+
+          if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+            return null;
+          }
+
+          const leadStatus = customer.lead_status || 
+                            customer.leadStatus || 
+                            'Monitoring';
+
+          return {
+            ...customer,
+            id: customer.id ?? `customer-${index}`,
+            latitude,
+            longitude,
+            displayName:
+              customer.name ||
+              customer.business_name ||
+              customer.firstname ||
+              customer.lastname ||
+              customer.username ||
+              'Customer',
+            lead_status: leadStatus,
+          };
+        })
+        .filter(Boolean);
+
+      const uniqueCustomers = normalizedCustomers.reduce((acc, customer) => {
+        const customerIdStr = String(customer.id);
+        if (!acc.find(c => String(c.id) === customerIdStr)) {
+          acc.push(customer);
+        }
+        return acc;
+      }, []);
+
+      setCanvassingCustomers(uniqueCustomers);
+    } catch (error) {
+      console.error('Home data fetch error:', error);
+    }
+  };
+
+  // Fetch hail dates and get most recent (same as Canvassing)
+  const fetchHailDates = async () => {
+    try {
+      const response = await fetch('https://app.stormbuddi.com/api/nexrad/local-dates', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Unable to fetch hail dates (status ${response.status})`);
+      }
+
+      const data = await response.json();
+      const rawDates =
+        (Array.isArray(data?.dates) && data.dates) ||
+        (Array.isArray(data?.data) && data.data) ||
+        (Array.isArray(data) && data) ||
+        [];
+
+      const parsed = rawDates
+        .map((entry, idx) => {
+          const value = entry?.date || entry;
+          if (!value) return null;
+          const parsedDate = new Date(value);
+          if (Number.isNaN(parsedDate.getTime())) {
+            return null;
+          }
+          return {
+            id: `${value}-${idx}`,
+            date: parsedDate,
+            hasImpact: entry?.hasImpact ?? entry?.has_impact ?? true,
+            polygonCount: entry?.polygon_count ?? null,
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.date.getTime() - a.date.getTime())
+        .slice(0, 1); // Get only the most recent
+
+      if (parsed.length > 0) {
+        return parsed[0].date;
+      }
+      return null;
+    } catch (error) {
+      console.error('Hail dates fetch error:', error);
+      return null;
+    }
+  };
+
+  // Fetch NEXRAD data (same as Canvassing)
+  const fetchNexradData = async (date) => {
+    if (!date) return;
+    
+    try {
+      const token = await getToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please login again.');
+      }
+
+      const formattedDate = formatDateForAPI(date);
+      const apiUrl = `https://app.stormbuddi.com/api/nexrad/local-date-data?date=${formattedDate}`;
+      
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || `HTTP error! status: ${response.status}`;
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      const processedPolygons = processGeoJsonData(data);
+      setCanvassingPolygons(processedPolygons);
+    } catch (err) {
+      console.error('NEXRAD data fetch error:', err);
+    }
+  };
+
+  // Adjust region to fit all polygons and customers
+  const adjustCanvassingRegion = (polygons, customers) => {
+    let minLat = Infinity;
+    let maxLat = -Infinity;
+    let minLng = Infinity;
+    let maxLng = -Infinity;
+
+    polygons.forEach(polygon => {
+      polygon.coordinates.forEach(coord => {
+        if (Number.isFinite(coord?.latitude) && Number.isFinite(coord?.longitude)) {
+          minLat = Math.min(minLat, coord.latitude);
+          maxLat = Math.max(maxLat, coord.latitude);
+          minLng = Math.min(minLng, coord.longitude);
+          maxLng = Math.max(maxLng, coord.longitude);
+        }
+      });
+    });
+
+    customers.forEach(customer => {
+      if (Number.isFinite(customer.latitude) && Number.isFinite(customer.longitude)) {
+        minLat = Math.min(minLat, customer.latitude);
+        maxLat = Math.max(maxLat, customer.latitude);
+        minLng = Math.min(minLng, customer.longitude);
+        maxLng = Math.max(maxLng, customer.longitude);
+      }
+    });
+
+    if (!Number.isFinite(minLat) || !Number.isFinite(maxLat) || 
+        !Number.isFinite(minLng) || !Number.isFinite(maxLng)) {
+      return;
+    }
+
+    const centerLat = (minLat + maxLat) / 2;
+    const centerLng = (minLng + maxLng) / 2;
+    const latDelta = Math.max((maxLat - minLat) * 1.5, 0.1);
+    const lngDelta = Math.max((maxLng - minLng) * 1.5, 0.1);
+
+    setCanvassingRegion({
+      latitude: centerLat,
+      longitude: centerLng,
+      latitudeDelta: latDelta,
+      longitudeDelta: lngDelta,
+    });
+  };
+
+  // Fetch canvassing data
+  const fetchCanvassingData = async () => {
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      // Fetch customers first
+      await fetchHomeData();
+
+      // Then fetch most recent hail date and polygons
+      const mostRecentDate = await fetchHailDates();
+      if (mostRecentDate) {
+        await fetchNexradData(mostRecentDate);
+      }
+    } catch (error) {
+      console.error('Canvassing data fetch error:', error);
+    }
+  };
+
+  // Adjust region when customers or polygons change
+  useEffect(() => {
+    if (canvassingPolygons.length > 0 || canvassingCustomers.length > 0) {
+      adjustCanvassingRegion(canvassingPolygons, canvassingCustomers);
+    }
+  }, [canvassingPolygons, canvassingCustomers]);
+
   // Fetch dashboard data from backend API
   const fetchDashboardData = async () => {
     startLoading();
@@ -263,6 +698,9 @@ const Dashboard = ({ navigation }) => {
         fetchStormAlerts(token),
         fetchLeads(token)
       ]);
+
+      // Fetch canvassing data separately (async, doesn't block)
+      fetchCanvassingData();
 
       if (!kpiResponse.ok) {
         throw new Error(`HTTP error! status: ${kpiResponse.status}`);
@@ -310,9 +748,17 @@ const Dashboard = ({ navigation }) => {
     }
   };
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
+  // Only fetch data and show loader when Dashboard screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchDashboardData();
+      
+      // Cleanup: stop loader when screen loses focus
+      return () => {
+        resetLoader();
+      };
+    }, [])
+  );
 
   // Function to update notification status in backend
   const updateNotificationStatusInBackend = async (enabled) => {
@@ -557,8 +1003,61 @@ const Dashboard = ({ navigation }) => {
     fetchDashboardData();
   };
 
+  const handleCanvassingPress = () => {
+    navigation.navigate('MainStack', { screen: 'Canvassing' });
+  };
+
+  // Memoize processed storm alerts to avoid recalculating on every render
+  const processedStormAlerts = useMemo(() => {
+    return data.stormAlerts.map((alert) => {
+      const formattedTime = new Date(alert.timestamp).toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
+      
+      const getSeverityColor = (hailSize) => {
+        if (!hailSize || hailSize === 0) return colors.textSecondary;
+        if (hailSize >= 1.5) return colors.error;
+        if (hailSize >= 1.0) return colors.warning;
+        return colors.info;
+      };
+      
+      const getSeverityLabel = (hailSize) => {
+        if (!hailSize || hailSize === 0) return 'N/A';
+        if (hailSize >= 1.5) return 'Severe';
+        if (hailSize >= 1.0) return 'Moderate';
+        return 'Light';
+      };
+      
+      return {
+        ...alert,
+        formattedTime,
+        severityColor: getSeverityColor(alert.maxHailSize),
+        severityLabel: getSeverityLabel(alert.maxHailSize),
+      };
+    });
+  }, [data.stormAlerts]);
+
+  // Memoize sorted and formatted leads
+  const processedLeads = useMemo(() => {
+    return data.leads
+      .sort((a, b) => new Date(b.lastUpdated) - new Date(a.lastUpdated))
+      .slice(0, 10)
+      .map((lead) => ({
+        ...lead,
+        formattedDate: new Date(lead.lastUpdated).toLocaleString(),
+      }));
+  }, [data.leads]);
+
+  // Limit canvassing customers for better map performance
+  const limitedCanvassingCustomers = useMemo(() => {
+    return canvassingCustomers.slice(0, 30);
+  }, [canvassingCustomers]);
+
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       
       {/* Global Page Loader */}
@@ -569,7 +1068,7 @@ const Dashboard = ({ navigation }) => {
       
       {/* Only show content when not loading */}
       {!shouldShowLoader && (
-        <View style={[styles.contentContainer, { paddingBottom: insets.bottom }]}>
+        <View style={styles.contentContainer}>
           {/* Header */}
           <Header
             title="Maddock"
@@ -667,117 +1166,154 @@ const Dashboard = ({ navigation }) => {
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.alertsScrollContent}
+                style={styles.alertsScrollView}
               >
-                {data.stormAlerts.map((alert, index) => {
-                  const formattedTime = new Date(alert.timestamp).toLocaleString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: 'numeric',
-                    minute: '2-digit',
-                  });
-                  
-                  // Determine severity based on hail size
-                  const getSeverityColor = (hailSize) => {
-                    if (!hailSize || hailSize === 0) return colors.textSecondary;
-                    if (hailSize >= 1.5) return colors.error; // Severe
-                    if (hailSize >= 1.0) return colors.warning; // Moderate
-                    return colors.info; // Light
-                  };
-                  
-                  const getSeverityLabel = (hailSize) => {
-                    if (!hailSize || hailSize === 0) return 'N/A';
-                    if (hailSize >= 1.5) return 'Severe';
-                    if (hailSize >= 1.0) return 'Moderate';
-                    return 'Light';
-                  };
-                  
-                  const severityColor = getSeverityColor(alert.maxHailSize);
-                  const severityLabel = getSeverityLabel(alert.maxHailSize);
-                  
-                  return (
-                    <Card
-                      key={alert.id}
-                      style={[
-                        styles.alertCard,
-                        index === data.stormAlerts.length - 1 && styles.alertCardLast,
-                      ]}
-                    >
-                      {/* Card Header with Location */}
-                      <View style={styles.alertCardHeader}>
-                        <View style={styles.alertHeaderLeft}>
-                          <Icon name="location-on" size={16} color={colors.primary} />
-                          <Text style={styles.alertLocation} numberOfLines={1}>
-                            {alert.location}
-                          </Text>
-                        </View>
-                      </View>
-                      
-                      {/* Storm Type with Severity Badge and Icon */}
-                      <View style={styles.alertTypeRow}>
-                        <View style={[styles.severityBadge, { backgroundColor: severityColor + '15' }]}>
-                          <View style={[styles.severityDot, { backgroundColor: severityColor }]} />
-                          <Text style={[styles.severityText, { color: severityColor }]}>
-                            {severityLabel}
-                          </Text>
-                        </View>
-                        <Icon 
-                          name={alert.type === 'hail' ? 'grain' : 'cloud'} 
-                          size={18} 
-                          color={colors.primary} 
-                          style={styles.alertTypeIcon}
-                        />
-                        <Text style={styles.alertType}>
-                          {alert.type ? alert.type.charAt(0).toUpperCase() + alert.type.slice(1) : 'Storm'}
+                {processedStormAlerts.map((alert, index) => (
+                  <Card
+                    key={alert.id}
+                    style={[
+                      styles.alertCard,
+                      index === processedStormAlerts.length - 1 && styles.alertCardLast,
+                    ]}
+                  >
+                    {/* Card Header with Location */}
+                    <View style={styles.alertCardHeader}>
+                      <View style={styles.alertHeaderLeft}>
+                        <Icon name="location-on" size={16} color={colors.primary} />
+                        <Text style={styles.alertLocation} numberOfLines={1}>
+                          {alert.location}
                         </Text>
                       </View>
-                      
-                      {/* Metrics Grid */}
-                      <View style={styles.alertMetricsGrid}>
-                        <View style={[styles.alertMetricCard, styles.alertMetricCardFirst]}>
-                          <View style={styles.alertMetricIconContainer}>
-                            <Icon name="grain" size={16} color={colors.primary} />
-                          </View>
-                          <View style={styles.alertMetricContent}>
-                            <Text style={styles.alertMetricLabel}>Max Hail</Text>
-                            <Text style={[styles.alertMetricValue, { color: severityColor }]}>
-                              {alert.maxHailSize ? `${alert.maxHailSize}"` : '--'}
-                            </Text>
-                          </View>
+                    </View>
+                    
+                    {/* Storm Type with Severity Badge and Icon */}
+                    <View style={styles.alertTypeRow}>
+                      <View style={[styles.severityBadge, { backgroundColor: alert.severityColor + '15' }]}>
+                        <View style={[styles.severityDot, { backgroundColor: alert.severityColor }]} />
+                        <Text style={[styles.severityText, { color: alert.severityColor }]}>
+                          {alert.severityLabel}
+                        </Text>
+                      </View>
+                      <Icon 
+                        name={alert.type === 'hail' ? 'grain' : 'cloud'} 
+                        size={18} 
+                        color={colors.primary} 
+                        style={styles.alertTypeIcon}
+                      />
+                      <Text style={styles.alertType}>
+                        {alert.type ? alert.type.charAt(0).toUpperCase() + alert.type.slice(1) : 'Storm'}
+                      </Text>
+                    </View>
+                    
+                    {/* Metrics Grid */}
+                    <View style={styles.alertMetricsGrid}>
+                      <View style={[styles.alertMetricCard, styles.alertMetricCardFirst]}>
+                        <View style={styles.alertMetricIconContainer}>
+                          <Icon name="grain" size={16} color={colors.primary} />
                         </View>
-                        <View style={[styles.alertMetricCard, styles.alertMetricCardLast]}>
-                          <View style={styles.alertMetricIconContainer}>
-                            <Icon name="flash-on" size={16} color={colors.primary} />
-                          </View>
-                          <View style={styles.alertMetricContent}>
-                            <Text style={styles.alertMetricLabel}>Events</Text>
-                            <Text style={styles.alertMetricValue}>
-                              {Number.isFinite(alert.totalEvents) && alert.totalEvents > 0
-                                ? alert.totalEvents
-                                : '--'}
-                            </Text>
-                          </View>
+                        <View style={styles.alertMetricContent}>
+                          <Text style={styles.alertMetricLabel}>Max Hail</Text>
+                          <Text style={[styles.alertMetricValue, { color: alert.severityColor }]}>
+                            {alert.maxHailSize ? `${alert.maxHailSize}"` : '--'}
+                          </Text>
                         </View>
                       </View>
-                      
-                      {/* Divider */}
-                      <View style={styles.alertDivider} />
-                      
-                      {/* Footer Info */}
-                      <View style={styles.alertFooter}>
-                        <View style={styles.alertFooterItem}>
-                          <Icon name="access-time" size={12} color={colors.textSecondary} />
-                          <Text style={styles.alertFooterText}>{formattedTime}</Text>
+                      <View style={[styles.alertMetricCard, styles.alertMetricCardLast]}>
+                        <View style={styles.alertMetricIconContainer}>
+                          <Icon name="flash-on" size={16} color={colors.primary} />
                         </View>
-                        <View style={styles.alertFooterItem}>
-                          <Icon name="radar" size={12} color={colors.textSecondary} />
-                          <Text style={styles.alertFooterText}>{alert.radarId || 'N/A'}</Text>
+                        <View style={styles.alertMetricContent}>
+                          <Text style={styles.alertMetricLabel}>Events</Text>
+                          <Text style={styles.alertMetricValue}>
+                            {Number.isFinite(alert.totalEvents) && alert.totalEvents > 0
+                              ? alert.totalEvents
+                              : '--'}
+                          </Text>
                         </View>
                       </View>
-                    </Card>
-                  );
-                })}
+                    </View>
+                    
+                    {/* Divider */}
+                    <View style={styles.alertDivider} />
+                    
+                    {/* Footer Info */}
+                    <View style={styles.alertFooter}>
+                      <View style={styles.alertFooterItem}>
+                        <Icon name="access-time" size={12} color={colors.textSecondary} />
+                        <Text style={styles.alertFooterText}>{alert.formattedTime}</Text>
+                      </View>
+                      <View style={styles.alertFooterItem}>
+                        <Icon name="radar" size={12} color={colors.textSecondary} />
+                        <Text style={styles.alertFooterText}>{alert.radarId || 'N/A'}</Text>
+                      </View>
+                    </View>
+                  </Card>
+                ))}
               </ScrollView>
             </View>
+          </View>
+        )}
+
+        {/* Canvassing Preview Section */}
+        {!shouldShowLoader && !error && MapView && (
+          <View style={styles.sectionContainer}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleRow}>
+                <Icon name="map" size={22} color={colors.primary} style={styles.sectionIcon} />
+                <Text style={styles.sectionTitle}>Canvassing</Text>
+              </View>
+              <TouchableOpacity onPress={handleCanvassingPress}>
+                <Text style={styles.viewAllLink}>View Full Map</Text>
+              </TouchableOpacity>
+            </View>
+            <Card style={styles.canvassingCard} onPress={handleCanvassingPress}>
+              <View style={styles.canvassingMapContainer}>
+                <MapView
+                  provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+                  style={styles.canvassingMap}
+                  region={canvassingRegion}
+                  scrollEnabled={false}
+                  zoomEnabled={false}
+                  pitchEnabled={false}
+                  rotateEnabled={false}
+                  mapType="standard"
+                  loadingEnabled={true}
+                >
+                  {Polygon && canvassingPolygons.map((polygon) => (
+                    <Polygon
+                      key={polygon.id}
+                      coordinates={polygon.coordinates}
+                      fillColor={polygon.fillColor}
+                      strokeColor={polygon.strokeColor}
+                      strokeWidth={polygon.strokeWidth}
+                    />
+                  ))}
+                  
+                  {Marker && limitedCanvassingCustomers.map((customer) => (
+                    <Marker
+                      key={customer.id}
+                      coordinate={{
+                        latitude: customer.latitude,
+                        longitude: customer.longitude,
+                      }}
+                      image={getMarkerIconSource(mapLeadStatusToMarkerKey(customer.lead_status))}
+                      anchor={{ x: 0.5, y: 1 }}
+                      tracksViewChanges={false}
+                    />
+                  ))}
+                </MapView>
+                <View style={styles.canvassingOverlay}>
+                  <Text style={styles.canvassingOverlayText}>
+                    {canvassingCustomers.length} Customers
+                  </Text>
+                  {canvassingPolygons.length > 0 && (
+                    <Text style={styles.canvassingOverlayText}>
+                      {canvassingPolygons.length} Hail Areas
+                    </Text>
+                  )}
+                </View>
+              </View>
+            </Card>
           </View>
         )}
 
@@ -802,16 +1338,13 @@ const Dashboard = ({ navigation }) => {
               nestedScrollEnabled={true}
               showsVerticalScrollIndicator={true}
             >
-              {data.leads.map((lead) => {
-                const formattedDate = new Date(lead.lastUpdated).toLocaleString();
-                return (
-                  <View key={lead.id} style={styles.leadRow}>
-                    <Text style={styles.leadData}>{formattedDate}</Text>
-                    <Text style={styles.leadData}>{lead.timeInStage}</Text>
-                    <Text style={styles.leadAddress}>{lead.address}</Text>
-                  </View>
-                );
-              })}
+              {processedLeads.map((lead) => (
+                <View key={lead.id} style={styles.leadRow}>
+                  <Text style={styles.leadData}>{lead.formattedDate}</Text>
+                  <Text style={styles.leadData}>{lead.timeInStage}</Text>
+                  <Text style={styles.leadAddress}>{lead.address}</Text>
+                </View>
+              ))}
             </ScrollView>
             
             <View style={styles.leadsFooter}>
@@ -836,7 +1369,7 @@ const Dashboard = ({ navigation }) => {
         </View>
       )}
 
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -974,15 +1507,17 @@ const styles = StyleSheet.create({
   alertsContainer: {
     paddingTop: 4,
   },
+  alertsScrollView: {
+    width: '100%',
+  },
   alertsScrollContent: {
     flexDirection: 'row',
-    paddingLeft: 8,
+    paddingLeft: 16,
     paddingRight: 16,
     paddingBottom: 4,
   },
   alertCard: {
     width: ALERT_CARD_WIDTH,
-    minWidth: ALERT_CARD_WIDTH,
     marginRight: 12,
     backgroundColor: colors.cardBackground,
     borderRadius: 12,
@@ -994,14 +1529,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 12,
     elevation: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     flexShrink: 0,
     borderWidth: 1,
     borderColor: colors.borderLight,
   },
   alertCardLast: {
-    marginRight: 0,
+    marginRight: 16,
   },
   alertCardHeader: {
     flexDirection: 'row',
@@ -1182,6 +1717,44 @@ const styles = StyleSheet.create({
   },
   viewAllButton: {
     minWidth: 120,
+  },
+  canvassingCard: {
+    marginHorizontal: 16,
+    overflow: 'hidden',
+  },
+  canvassingMapContainer: {
+    height: 200,
+    width: '100%',
+    borderRadius: 8,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  canvassingMap: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  canvassingOverlay: {
+    position: 'absolute',
+    bottom: 8,
+    left: 8,
+    right: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  canvassingOverlayText: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  viewAllLink: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '600',
   },
 });
 

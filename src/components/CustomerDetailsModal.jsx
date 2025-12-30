@@ -191,14 +191,14 @@ const CustomerDetailsModal = ({
       slideAnim.setValue(SCREEN_WIDTH * 2); // Start off screen at bottom
       Animated.timing(slideAnim, {
         toValue: 0,
-        duration: 300,
+        duration: 500,
         easing: Easing.bezier(0.25, 0.1, 0.25, 1),
         useNativeDriver: true,
       }).start();
     } else {
       Animated.timing(slideAnim, {
         toValue: SCREEN_WIDTH * 2,
-        duration: 250,
+        duration: 400,
         easing: Easing.bezier(0.25, 0.1, 0.25, 1),
         useNativeDriver: true,
       }).start();

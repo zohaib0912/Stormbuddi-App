@@ -5,10 +5,10 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   Dimensions,
   Platform,
@@ -29,8 +29,10 @@ import {
 import Header from '../components/Header';
 import AddressDetailsModal from '../components/AddressDetailsModal';
 import CustomerInfoModal from '../components/CustomerInfoModal';
+import PageLoader from '../components/PageLoader';
 import { colors } from '../theme/colors';
 import { getToken } from '../utils/tokenStorage';
+import usePageLoader from '../hooks/usePageLoader';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 
@@ -183,13 +185,11 @@ const Canvassing = ({ navigation }) => {
   });
   const [mapError, setMapError] = useState(null);
   const [polygons, setPolygons] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedPolygon, setSelectedPolygon] = useState(null);
   const [mapPressLocation, setMapPressLocation] = useState(null);
   const [customers, setCustomers] = useState([]);
   const [customersError, setCustomersError] = useState(null);
-  const [shouldShowLoader, setShouldShowLoader] = useState(false);
   const mapRef = useRef(null);
   const selectedMarkerRef = useRef(null);
   const pendingMarkerRef = useRef(null);
@@ -222,13 +222,8 @@ const Canvassing = ({ navigation }) => {
   const [forceClosePlacesList, setForceClosePlacesList] = useState(false);
   const [searchAddressText, setSearchAddressText] = useState('');
 
-  const startLoading = () => {
-    setShouldShowLoader(true);
-  };
-
-  const stopLoading = () => {
-    setShouldShowLoader(false);
-  };
+  // Use the page loader hook - start with false, only show when screen is focused
+  const { shouldShowLoader, startLoading, stopLoading, resetLoader } = usePageLoader(false);
 
   const handleNotificationPress = () => {
     // Handle notification press if needed
@@ -1028,7 +1023,6 @@ const Canvassing = ({ navigation }) => {
   const fetchNexradData = async (date = selectedDate) => {
     if (!date) return;
     startLoading();
-    setLoading(true);
     setMapError(null);
     
     try {
@@ -1080,7 +1074,6 @@ const Canvassing = ({ navigation }) => {
       console.error('NEXRAD data fetch error:', err);
       setMapError(err.message || 'Failed to load NEXRAD data');
     } finally {
-      setLoading(false);
       stopLoading();
     }
   };
@@ -1271,15 +1264,20 @@ const getPolygonCentroid = (coordinates = []) => {
     setSelectedDate(date);
   };
 
-  // Fetch data when component mounts
-  useEffect(() => {
-    console.log('Canvassing screen mounted');
-    fetchHomeData();
-    fetchHailDates();
-    return () => {
-      console.log('Canvassing screen unmounted');
-    };
-  }, []);
+  // Only fetch data and show loader when Canvassing screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('Canvassing screen focused');
+      fetchHomeData();
+      fetchHailDates();
+      
+      // Cleanup: stop loader when screen loses focus
+      return () => {
+        console.log('Canvassing screen blurred');
+        resetLoader();
+      };
+    }, [])
+  );
 
   useEffect(() => {
     if (selectedDate) {
@@ -1422,7 +1420,7 @@ const getPolygonCentroid = (coordinates = []) => {
 
   if (!MapView) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
         <Header
           title="Canvassing"
@@ -1436,12 +1434,12 @@ const getPolygonCentroid = (coordinates = []) => {
             Run: npm run android (or npm run ios) to rebuild
           </Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       
       <Header
@@ -1455,13 +1453,11 @@ const getPolygonCentroid = (coordinates = []) => {
         </View>
       )}
 
-      {/* Loading Indicator */}
-      {shouldShowLoader && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading NEXRAD data...</Text>
-        </View>
-      )}
+      {/* Global Page Loader */}
+      <PageLoader 
+        visible={shouldShowLoader}
+        message="Loading canvassing data..."
+      />
 
       {/* Full Screen Map */}
       <View style={styles.mapContainer}>
@@ -2038,7 +2034,7 @@ const getPolygonCentroid = (coordinates = []) => {
         updatingMarkerIcon={isUpdatingMarkerIcon}
         pendingMarkerIcon={pendingMarkerIcon}
       />
-    </SafeAreaView>
+    </View>
   );
 };
 

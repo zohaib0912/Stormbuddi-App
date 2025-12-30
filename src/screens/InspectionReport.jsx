@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   ScrollView,
   RefreshControl,
@@ -57,8 +57,8 @@ const InspectionReport = ({ navigation, route }) => {
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   
-  // Use the page loader hook
-  const { shouldShowLoader, startLoading, stopLoading } = usePageLoader(true);
+  // Use the page loader hook - start with false, only show when screen is focused
+  const { shouldShowLoader, startLoading, stopLoading, resetLoader } = usePageLoader(false);
   
   // Get jobId from route params if available
   const jobId = route?.params?.jobId;
@@ -412,14 +412,22 @@ const InspectionReport = ({ navigation, route }) => {
     }
   };
 
-  useEffect(() => {
-    fetchReports();
-    fetchAppointments();
-    // Only fetch projects if not viewing a specific job
-    if (!jobId) {
-      fetchProjects();
-    }
-  }, [jobId]);
+  // Only fetch data and show loader when InspectionReport screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchReports();
+      fetchAppointments();
+      // Only fetch projects if not viewing a specific job
+      if (!jobId) {
+        fetchProjects();
+      }
+      
+      // Cleanup: stop loader when screen loses focus
+      return () => {
+        resetLoader();
+      };
+    }, [jobId])
+  );
 
   useEffect(() => {
     let filtered = reports || [];
@@ -728,7 +736,7 @@ const InspectionReport = ({ navigation, route }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#f8f9fa" />
       
       <PageLoader visible={shouldShowLoader} message="Loading..." />
@@ -1056,7 +1064,7 @@ const InspectionReport = ({ navigation, route }) => {
           </View>
         </TouchableOpacity>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 };
 

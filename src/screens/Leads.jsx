@@ -20,7 +20,6 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   ScrollView,
   TouchableOpacity,
@@ -132,7 +131,6 @@ const Leads = ({ navigation, route }) => {
   const [selectedCustomerName, setSelectedCustomerName] = useState('');
   const [kpisData, setKpisData] = useState(null);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
-  const [isFiltering, setIsFiltering] = useState(false);
   
   // Use the new page loader hook
   const { shouldShowLoader, startLoading, stopLoading } = usePageLoader(true);
@@ -289,114 +287,42 @@ const Leads = ({ navigation, route }) => {
 
   // Filter leads based on search query and filters
   useEffect(() => {
-    // Show filtering loader if there are leads to filter
-    if (leads.length > 0) {
-      // Always show loader when filtering is triggered (either by filter change or search)
-      if (isFiltering) {
-        // Simulate filtering delay for better UX
-        setTimeout(() => {
-        console.log('=== FILTERING DEBUG ===');
-        console.log('Total leads:', leads.length);
-        console.log('Search query:', searchQuery);
-        console.log('Status filter:', statusFilter);
-        
-        let filtered = leads;
+    let filtered = leads;
 
-        // Search filter
-        if (searchQuery.trim()) {
-          console.log('Applying search filter for:', searchQuery);
-          console.log('Sample lead data for search:', leads.slice(0, 2).map(lead => ({
-            address: lead.address,
-            client_name: lead.client_name,
-            source: lead.source,
-            status: lead.status,
-            assigned_to: lead.assigned_to
-          })));
-          const beforeSearch = filtered.length;
-          filtered = filtered.filter(lead =>
-            lead.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            lead.contactInfo.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            lead.client_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            lead.source?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            lead.status?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            lead.assigned_to?.toLowerCase().includes(searchQuery.toLowerCase())
-          );
-          console.log('Search filter: ', beforeSearch, '->', filtered.length);
-        }
-
-        // Status filter (case-insensitive, normalize common values)
-        if (statusFilter !== 'all') {
-          console.log('Applying status filter for:', statusFilter);
-          const beforeStatus = filtered.length;
-          const target = String(statusFilter).toLowerCase();
-          
-          // Map filter values to actual status values
-          const statusMapping = {
-            'new': ['new', 'unactioned', 'pending'],
-            'qualified': ['qualified', 'proposal-sent', 'proposal-viewed'],
-            'closed': ['closed'],
-            'contacted': ['contacted', 'in-progress']
-          };
-          
-          const targetStatuses = statusMapping[target] || [target];
-          
-          filtered = filtered.filter(lead => {
-            const leadStatus = String(lead.status || '').toLowerCase();
-            const match = targetStatuses.includes(leadStatus);
-            console.log('Lead status:', lead.status, 'matches filter:', match, 'target statuses:', targetStatuses);
-            return match;
-          });
-          console.log('Status filter: ', beforeStatus, '->', filtered.length);
-        }
-
-        console.log('Final filtered results:', filtered.length, 'out of', leads.length);
-        setFilteredLeads(filtered);
-        setIsFiltering(false);
-        }, 300); // 300ms delay for smooth UX
-      } else {
-        // Filter wasn't triggered by UI, just apply immediately without loader
-        let filtered = leads;
-
-        // Search filter
-        if (searchQuery.trim()) {
-          filtered = filtered.filter(lead =>
-            lead.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            lead.contactInfo.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            lead.client_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            lead.source?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            lead.status?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            lead.assigned_to?.toLowerCase().includes(searchQuery.toLowerCase())
-          );
-        }
-
-        // Status filter
-        if (statusFilter !== 'all') {
-          const target = String(statusFilter).toLowerCase();
-          
-          const statusMapping = {
-            'new': ['new', 'unactioned', 'pending'],
-            'qualified': ['qualified', 'proposal-sent', 'proposal-viewed'],
-            'closed': ['closed'],
-            'contacted': ['contacted', 'in-progress']
-          };
-          
-          const targetStatuses = statusMapping[target] || [target];
-          
-          filtered = filtered.filter(lead => {
-            const leadStatus = String(lead.status || '').toLowerCase();
-            return targetStatuses.includes(leadStatus);
-          });
-        }
-
-        setFilteredLeads(filtered);
-        setIsFiltering(false);
-      }
-    } else {
-      // No leads, set empty array
-      setFilteredLeads([]);
-      setIsFiltering(false);
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(lead =>
+        lead.address.toLowerCase().includes(query) ||
+        lead.contactInfo.name.toLowerCase().includes(query) ||
+        lead.client_name?.toLowerCase().includes(query) ||
+        lead.source?.toLowerCase().includes(query) ||
+        lead.status?.toLowerCase().includes(query) ||
+        lead.assigned_to?.toLowerCase().includes(query)
+      );
     }
-  }, [leads, searchQuery, statusFilter, isFiltering]);
+
+    // Status filter
+    if (statusFilter !== 'all') {
+      const target = String(statusFilter).toLowerCase();
+      
+      const statusMapping = {
+        'new': ['new', 'unactioned', 'pending'],
+        'qualified': ['qualified', 'proposal-sent', 'proposal-viewed'],
+        'closed': ['closed'],
+        'contacted': ['contacted', 'in-progress']
+      };
+      
+      const targetStatuses = statusMapping[target] || [target];
+      
+      filtered = filtered.filter(lead => {
+        const leadStatus = String(lead.status || '').toLowerCase();
+        return targetStatuses.includes(leadStatus);
+      });
+    }
+
+    setFilteredLeads(filtered);
+  }, [leads, searchQuery, statusFilter]);
 
 
 
@@ -415,9 +341,6 @@ const Leads = ({ navigation, route }) => {
   const unactionedLeadsCount = kpisData ? kpisData.unactioned_leads : 0;
 
   const handleMetricPress = (metricType) => {
-    // Show filtering loader when metric is pressed
-    setIsFiltering(true);
-    
     switch (metricType) {
       case 'total':
         setStatusFilter('all');
@@ -518,7 +441,7 @@ const Leads = ({ navigation, route }) => {
 
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#f8f9fa" />
       
       {/* Global Page Loader */}
@@ -526,16 +449,10 @@ const Leads = ({ navigation, route }) => {
         visible={shouldShowLoader}
         message="Loading leads..."
       />
-
-      {/* Filtering Loader */}
-      <PageLoader 
-        visible={isFiltering}
-        message="Filtering leads..."
-      />
       
       {/* Only show content when not loading */}
       {!shouldShowLoader && (
-        <View style={[styles.contentContainer, { paddingBottom: insets.bottom }]}>
+        <View style={styles.contentContainer}>
           {/* Header */}
           <Header
             title="Maddock"
@@ -608,10 +525,7 @@ const Leads = ({ navigation, route }) => {
                             styles.filterButton,
                             statusFilter === status && styles.filterButtonActive
                           ]}
-                          onPress={() => {
-                            setIsFiltering(true);
-                            setStatusFilter(status);
-                          }}
+                          onPress={() => setStatusFilter(status)}
                         >
                           <Text style={[
                             styles.filterButtonText,
@@ -714,7 +628,7 @@ const Leads = ({ navigation, route }) => {
         />
       )}
 
-    </SafeAreaView>
+    </View>
   );
 };
 

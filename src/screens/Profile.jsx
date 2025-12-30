@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   ScrollView,
   Alert,
@@ -55,8 +55,8 @@ const Profile = ({ navigation }) => {
   const [avatarUrl, setAvatarUrl] = useState(null);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   
-  // Use the new page loader hook
-  const { shouldShowLoader, startLoading, stopLoading } = usePageLoader(true);
+  // Use the new page loader hook - start with false, only show when screen is focused
+  const { shouldShowLoader, startLoading, stopLoading, resetLoader } = usePageLoader(false);
 
   const { uploading: avatarUploading, error: avatarError, uploadedUrl, pickAndUpload, upload, selected } = useAvatarUpload({
     onUploaded: (url) => {
@@ -152,17 +152,25 @@ const Profile = ({ navigation }) => {
     }
   };
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const cached = await getUserProfile();
-        if (cached?.avatarUrl) {
-          setAvatarUrl(cached.avatarUrl);
-        }
-      } catch (_) {}
-      fetchProfile();
-    })();
-  }, []);
+  // Only fetch data and show loader when Profile screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      (async () => {
+        try {
+          const cached = await getUserProfile();
+          if (cached?.avatarUrl) {
+            setAvatarUrl(cached.avatarUrl);
+          }
+        } catch (_) {}
+        fetchProfile();
+      })();
+      
+      // Cleanup: stop loader when screen loses focus
+      return () => {
+        resetLoader();
+      };
+    }, [])
+  );
 
   // Handle avatar upload errors with toast
   useEffect(() => {
@@ -331,7 +339,7 @@ const Profile = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.white} />
       
       {/* Global Page Loader */}
@@ -342,7 +350,7 @@ const Profile = ({ navigation }) => {
       
       {/* Only show content when not loading */}
       {!shouldShowLoader && (
-        <View style={[styles.contentContainer, { paddingBottom: insets.bottom }]}>
+        <View style={styles.contentContainer}>
           {/* Header */}
           <Header
             title="Profile"
@@ -358,7 +366,7 @@ const Profile = ({ navigation }) => {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={[
               styles.scrollContent,
-              { paddingBottom: insets.bottom + 20 }
+              { paddingBottom: 20 }
             ]}
           >
         {/* Error State */}
@@ -544,7 +552,7 @@ const Profile = ({ navigation }) => {
         />
         </View>
       )}
-    </SafeAreaView>
+    </View>
   );
 };
 

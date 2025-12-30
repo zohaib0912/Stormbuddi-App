@@ -6,7 +6,6 @@ import {
   ImageBackground,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   StatusBar,
   Dimensions,
   Alert,
@@ -82,7 +81,7 @@ const ForgotPassword = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       
       {/* Global Page Loader */}
@@ -207,7 +206,7 @@ const ForgotPassword = ({ navigation }) => {
           </ImageBackground>
         </>
       )}
-    </SafeAreaView>
+    </View>
   );
 };
 

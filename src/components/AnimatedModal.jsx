@@ -3,7 +3,7 @@ import { Modal, Animated, View, TouchableOpacity, StyleSheet, Easing } from 'rea
 
 /**
  * AnimatedModal with slide-left-right animation
- * Duration: 300ms
+ * Duration: 500ms
  * Adds a semi-transparent background wrapper
  */
 const AnimatedModal = ({ 
@@ -11,7 +11,7 @@ const AnimatedModal = ({
   onClose, 
   children,
   animationType = 'slide', // 'slide' or 'fade'
-  duration = 300
+  duration = 500
 }) => {
   const slideAnimation = useRef(new Animated.Value(0)).current;
   const fadeAnimation = useRef(new Animated.Value(0)).current;

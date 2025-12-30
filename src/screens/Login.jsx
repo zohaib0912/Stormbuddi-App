@@ -7,7 +7,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   TouchableWithoutFeedback,
-  SafeAreaView,
   StatusBar,
   Dimensions,
   Alert,
@@ -140,7 +139,7 @@ const Login = ({ navigation }) => {
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
         
         {/* Global Page Loader */}
@@ -241,7 +240,7 @@ const Login = ({ navigation }) => {
             </ImageBackground>
           </>
         )}
-      </SafeAreaView>
+      </View>
     </TouchableWithoutFeedback>
   );
 };

@@ -80,6 +80,9 @@ const UploadInspectionReportModal = ({
   const [projects, setProjects] = useState([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [showFileSourceModal, setShowFileSourceModal] = useState(false);
+  const [showCustomNameModal, setShowCustomNameModal] = useState(false);
+  const [pendingFileUpload, setPendingFileUpload] = useState(null);
+  const [customFileNameInput, setCustomFileNameInput] = useState('');
   const slideAnim = useRef(new Animated.Value(SCREEN_WIDTH)).current;
 
   // Animate modal in and out
@@ -250,6 +253,77 @@ const UploadInspectionReportModal = ({
     }
   };
 
+  // Prompt function for custom file name
+  const promptFileName = (defaultFileName) => {
+    return new Promise((resolve) => {
+      if (Platform.OS === 'ios') {
+        // iOS has built-in Alert.prompt
+        Alert.prompt(
+          'Enter File Name',
+          'Give this file a custom name:',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => resolve(null),
+            },
+            {
+              text: 'OK',
+              onPress: (text) => {
+                const name = text?.trim() || defaultFileName;
+                resolve(name || null);
+              },
+            },
+          ],
+          'plain-text',
+          defaultFileName.replace(/\.[^/.]+$/, '') // Remove extension for input
+        );
+      } else {
+        // For Android, show modal with TextInput
+        const nameWithoutExt = defaultFileName.replace(/\.[^/.]+$/, '');
+        setCustomFileNameInput(nameWithoutExt);
+        setPendingFileUpload({ defaultFileName, resolve });
+        setShowCustomNameModal(true);
+      }
+    });
+  };
+
+  // Handle custom name confirmation
+  const handleCustomNameConfirm = () => {
+    if (!pendingFileUpload) {
+      setShowCustomNameModal(false);
+      return;
+    }
+
+    const name = customFileNameInput.trim();
+    if (!name) {
+      showError('Please enter a file name');
+      return;
+    }
+
+    // Add extension if not present
+    let finalName = name;
+    const ext = pendingFileUpload.defaultFileName.split('.').pop();
+    if (ext && !finalName.includes('.')) {
+      finalName = `${finalName}.${ext}`;
+    }
+
+    setShowCustomNameModal(false);
+    pendingFileUpload.resolve(finalName);
+    setPendingFileUpload(null);
+    setCustomFileNameInput('');
+  };
+
+  // Handle custom name cancel
+  const handleCustomNameCancel = () => {
+    if (pendingFileUpload) {
+      pendingFileUpload.resolve(null);
+    }
+    setShowCustomNameModal(false);
+    setPendingFileUpload(null);
+    setCustomFileNameInput('');
+  };
+
   // Request storage permission for Android
   const requestStoragePermission = async () => {
     if (Platform.OS !== 'android') {
@@ -310,12 +384,31 @@ const UploadInspectionReportModal = ({
       });
       
       console.log('Photo taken successfully:', image);
+      
+      const defaultFileName = image.filename || `photo_${Date.now()}.jpg`;
+      
+      // Prompt for custom name
+      const customFileName = await promptFileName(defaultFileName);
+      if (customFileName === null) {
+        // User cancelled
+        return;
+      }
+      
+      // Add extension if not present
+      let finalName = customFileName;
+      if (!finalName.includes('.')) {
+        const ext = defaultFileName.split('.').pop() || 'jpg';
+        finalName = `${finalName}.${ext}`;
+      }
+      
       // Append to files array instead of replacing
       setFormData(prev => ({
         ...prev,
         files: [...prev.files, {
           file: image,
-          fileName: image.filename || `photo_${Date.now()}.jpg`,
+          fileName: finalName,
+          originalFileName: defaultFileName,
+          customFileName: finalName,
           fileType: image.mime || 'image/jpeg',
           fileSize: image.size || 0,
           fileUri: image.path,
@@ -329,7 +422,15 @@ const UploadInspectionReportModal = ({
         }));
       }
     } catch (error) {
-      if (error.message && error.message !== 'User cancelled image selection') {
+      // Handle cancel - check multiple possible cancel messages
+      const isCancel = 
+        error.message === 'User cancelled image selection' ||
+        error.message === 'User canceled image selection' ||
+        error.message?.includes('cancel') ||
+        error.message?.includes('Cancel') ||
+        error.code === 'E_PICKER_CANCELLED';
+      
+      if (!isCancel) {
         console.log('Camera error:', error);
         showError('Failed to launch camera. Please try again.');
       }
@@ -366,20 +467,41 @@ const UploadInspectionReportModal = ({
       // Handle both single and multiple selections
       const imagesArray = Array.isArray(image) ? image : [image];
       
-      // Append all selected images to files array
-      setFormData(prev => ({
-        ...prev,
-        files: [
-          ...prev.files,
-          ...imagesArray.map(img => ({
-            file: img,
-            fileName: img.filename || `image_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.jpg`,
-            fileType: img.mime || 'image/jpeg',
-            fileSize: img.size || 0,
-            fileUri: img.path,
-          }))
-        ]
-      }));
+      // Process each image and prompt for custom name
+      for (const img of imagesArray) {
+        const defaultFileName = img.filename || `image_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.jpg`;
+        
+        // Prompt for custom name
+        const customFileName = await promptFileName(defaultFileName);
+        if (customFileName === null) {
+          // User cancelled this file, skip it
+          continue;
+        }
+        
+        // Add extension if not present
+        let finalName = customFileName;
+        if (!finalName.includes('.')) {
+          const ext = defaultFileName.split('.').pop() || 'jpg';
+          finalName = `${finalName}.${ext}`;
+        }
+        
+        // Append to files array
+        setFormData(prev => ({
+          ...prev,
+          files: [
+            ...prev.files,
+            {
+              file: img,
+              fileName: finalName,
+              originalFileName: defaultFileName,
+              customFileName: finalName,
+              fileType: img.mime || 'image/jpeg',
+              fileSize: img.size || 0,
+              fileUri: img.path,
+            }
+          ]
+        }));
+      }
 
       if (errors.file) {
         setErrors(prev => ({
@@ -388,7 +510,15 @@ const UploadInspectionReportModal = ({
         }));
       }
     } catch (error) {
-      if (error.message && error.message !== 'User cancelled image selection') {
+      // Handle cancel - check multiple possible cancel messages
+      const isCancel = 
+        error.message === 'User cancelled image selection' ||
+        error.message === 'User canceled image selection' ||
+        error.message?.includes('cancel') ||
+        error.message?.includes('Cancel') ||
+        error.code === 'E_PICKER_CANCELLED';
+      
+      if (!isCancel) {
         console.log('Gallery error:', error);
         showError('Failed to launch gallery. Please try again.');
       }
@@ -411,20 +541,41 @@ const UploadInspectionReportModal = ({
       console.log('Document(s) picked:', results);
 
       if (results && results.length > 0) {
-        // Append all selected documents to files array
-        setFormData(prev => ({
-          ...prev,
-          files: [
-            ...prev.files,
-            ...results.map(file => ({
-              file: file,
-              fileName: file.name || `document_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.pdf`,
-              fileType: file.type || 'application/pdf',
-              fileSize: file.size || 0,
-              fileUri: file.uri,
-            }))
-          ]
-        }));
+        // Process each document and prompt for custom name
+        for (const file of results) {
+          const defaultFileName = file.name || `document_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.pdf`;
+          
+          // Prompt for custom name
+          const customFileName = await promptFileName(defaultFileName);
+          if (customFileName === null) {
+            // User cancelled this file, skip it
+            continue;
+          }
+          
+          // Add extension if not present
+          let finalName = customFileName;
+          if (!finalName.includes('.')) {
+            const ext = defaultFileName.split('.').pop() || 'pdf';
+            finalName = `${finalName}.${ext}`;
+          }
+          
+          // Append to files array
+          setFormData(prev => ({
+            ...prev,
+            files: [
+              ...prev.files,
+              {
+                file: file,
+                fileName: finalName,
+                originalFileName: defaultFileName,
+                customFileName: finalName,
+                fileType: file.type || 'application/pdf',
+                fileSize: file.size || 0,
+                fileUri: file.uri,
+              }
+            ]
+          }));
+        }
 
         if (errors.file) {
           setErrors(prev => ({
@@ -525,13 +676,23 @@ const UploadInspectionReportModal = ({
       
       // Add all files to FormData
       formData.files.forEach((fileItem, index) => {
+        // Use customFileName if available, otherwise use fileName
+        const finalFileName = fileItem.customFileName || fileItem.fileName;
+        
         formDataToSend.append('files[]', {
           uri: fileItem.fileUri,
           type: fileItem.fileType,
-          name: fileItem.fileName,
+          name: finalFileName,
         });
+        
+        // Add custom_file_name to FormData if provided
+        if (fileItem.customFileName) {
+          formDataToSend.append('custom_file_name', fileItem.customFileName);
+        }
+        
         console.log(`Adding file ${index + 1} to upload:`, {
           fileName: fileItem.fileName,
+          customFileName: fileItem.customFileName,
           fileType: fileItem.fileType,
           fileSize: fileItem.fileSize,
         });
@@ -988,6 +1149,46 @@ const UploadInspectionReportModal = ({
         onClose={() => setShowFileSourceModal(false)}
         onSelectSource={handleFileSourceSelect}
       />
+
+      {/* Custom File Name Modal for Android */}
+      <Modal
+        visible={showCustomNameModal}
+        transparent
+        animationType="slide"
+        onRequestClose={handleCustomNameCancel}
+      >
+        <View style={styles.customNameModalOverlay}>
+          <View style={styles.customNameModalContainer}>
+            <Text style={styles.customNameModalTitle}>Enter File Name</Text>
+            <Text style={styles.customNameModalSubtitle}>Give this file a custom name</Text>
+            
+            <TextInput
+              style={styles.customNameModalInput}
+              value={customFileNameInput}
+              onChangeText={setCustomFileNameInput}
+              placeholder="Enter file name"
+              autoFocus
+              maxLength={100}
+            />
+            
+            <View style={styles.customNameModalButtonContainer}>
+              <TouchableOpacity
+                style={[styles.customNameModalButton, styles.customNameModalCancelButton]}
+                onPress={handleCustomNameCancel}
+              >
+                <Text style={styles.customNameModalCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.customNameModalButton, styles.customNameModalConfirmButton]}
+                onPress={handleCustomNameConfirm}
+              >
+                <Text style={styles.customNameModalConfirmButtonText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 };
@@ -1326,6 +1527,66 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.primary,
+  },
+  customNameModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  customNameModalContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    width: '85%',
+    maxWidth: 400,
+  },
+  customNameModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    color: '#333',
+  },
+  customNameModalSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 20,
+  },
+  customNameModalInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 20,
+  },
+  customNameModalButtonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  customNameModalButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  customNameModalCancelButton: {
+    backgroundColor: '#f5f5f5',
+    marginRight: 10,
+  },
+  customNameModalCancelButtonText: {
+    color: '#666',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  customNameModalConfirmButton: {
+    backgroundColor: '#4DA3FF',
+    marginLeft: 10,
+  },
+  customNameModalConfirmButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

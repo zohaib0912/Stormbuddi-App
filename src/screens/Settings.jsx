@@ -4,7 +4,6 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   Alert,
 } from 'react-native';
@@ -109,10 +108,10 @@ const Settings = () => {
 
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       
-      <View style={[styles.contentContainer, { paddingBottom: insets.bottom }]}>
+      <View style={styles.contentContainer}>
         {/* Header */}
         <Header
           title="Maddock"
@@ -157,7 +156,7 @@ const Settings = () => {
       </View>
 
       {/* App Version */}
-      <View style={[styles.versionContainer, { paddingBottom: insets.bottom + 20 }]}>
+      <View style={[styles.versionContainer, { paddingBottom: 20 }]}>
         <Text style={styles.versionText}>App version 1.0.0</Text>
       </View>
 
@@ -185,7 +184,7 @@ const Settings = () => {
         onClose={() => setShowNotificationListModal(false)}
       />
       </View>
-    </SafeAreaView>
+    </View>
   );
 };
 

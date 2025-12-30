@@ -99,14 +99,14 @@ const JobModal = ({
       slideAnim.setValue(SCREEN_WIDTH);
       Animated.timing(slideAnim, {
         toValue: 0,
-        duration: 500,
+        duration: 700,
         easing: Easing.bezier(0.25, 0.1, 0.25, 1),
         useNativeDriver: true,
       }).start();
     } else {
       Animated.timing(slideAnim, {
         toValue: SCREEN_WIDTH,
-        duration: 400,
+        duration: 600,
         easing: Easing.bezier(0.25, 0.1, 0.25, 1),
         useNativeDriver: true,
       }).start();

@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   Alert,
   Modal,
 } from 'react-native';
@@ -81,8 +81,8 @@ const Appointment = ({ navigation }) => {
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const calendarStripRef = useRef(null);
   
-  // Use the new page loader hook
-  const { shouldShowLoader, startLoading, stopLoading } = usePageLoader(true);
+  // Use the new page loader hook - start with false, only show when screen is focused
+  const { shouldShowLoader, startLoading, stopLoading, resetLoader } = usePageLoader(false);
 
   // Fetch appointments from backend API
   const fetchAppointments = async () => {
@@ -158,9 +158,17 @@ const Appointment = ({ navigation }) => {
     }
   };
 
-  useEffect(() => {
-    fetchAppointments();
-  }, []);
+  // Only fetch data and show loader when Appointment screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchAppointments();
+      
+      // Cleanup: stop loader when screen loses focus
+      return () => {
+        resetLoader();
+      };
+    }, [])
+  );
 
   const handleDateSelect = (date) => {
     setSelectedDate(date);
@@ -230,7 +238,7 @@ const Appointment = ({ navigation }) => {
       });
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       {/* Global Page Loader */}
       <PageLoader 
         visible={shouldShowLoader}
@@ -239,7 +247,7 @@ const Appointment = ({ navigation }) => {
       
       {/* Only show content when not loading */}
       {!shouldShowLoader && (
-        <View style={[styles.contentContainer, { paddingBottom: insets.bottom }]}>
+        <View style={styles.contentContainer}>
           <Header
             title="Appointments"
             onMenuPress={handleMenuPress}
@@ -391,7 +399,7 @@ const Appointment = ({ navigation }) => {
           </ScrollView>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 };
 

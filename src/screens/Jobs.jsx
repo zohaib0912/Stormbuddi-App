@@ -15,12 +15,11 @@
  * - Data structure is already compatible with typical REST API responses
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   TouchableOpacity,
   TextInput,
@@ -79,7 +78,6 @@ const mockJobs = [
 const Jobs = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const [jobs, setJobs] = useState([]);
-  const [filteredJobs, setFilteredJobs] = useState([]);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStage, setSelectedStage] = useState('all');
@@ -147,16 +145,17 @@ const Jobs = ({ navigation }) => {
     fetchJobs();
   }, []);
 
-  // Filter jobs based on search query and stage filter
-  useEffect(() => {
+  // Memoize filtered jobs to avoid recalculating on every render
+  const filteredJobs = useMemo(() => {
     let filtered = jobs;
 
     // Search filter
     if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
       filtered = filtered.filter(job =>
-        job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        job.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (job.assigned_to && job.assigned_to.toLowerCase().includes(searchQuery.toLowerCase()))
+        job.title?.toLowerCase().includes(query) ||
+        job.address?.toLowerCase().includes(query) ||
+        (job.assigned_to && job.assigned_to.toLowerCase().includes(query))
       );
     }
 
@@ -182,7 +181,7 @@ const Jobs = ({ navigation }) => {
       }
     }
 
-    setFilteredJobs(filtered);
+    return filtered;
   }, [jobs, searchQuery, selectedStage]);
 
 
@@ -280,7 +279,7 @@ const Jobs = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       
       {/* Global Page Loader */}
@@ -291,7 +290,7 @@ const Jobs = ({ navigation }) => {
       
       {/* Only show content when not loading */}
       {!shouldShowLoader && (
-        <View style={[styles.contentContainer, { paddingBottom: insets.bottom }]}>
+        <View style={styles.contentContainer}>
           {/* Header */}
           <Header
             title="Maddock"
@@ -442,7 +441,7 @@ const Jobs = ({ navigation }) => {
         />
       )}
 
-    </SafeAreaView>
+    </View>
   );
 };
 

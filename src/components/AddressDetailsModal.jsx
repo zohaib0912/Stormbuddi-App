@@ -50,7 +50,7 @@ const AddressDetailsModal = ({
   useEffect(() => {
     Animated.timing(slideAnim, {
       toValue: visible ? 0 : width,
-      duration: 300,
+      duration: 500,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();

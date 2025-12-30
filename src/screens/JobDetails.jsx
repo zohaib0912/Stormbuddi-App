@@ -10,12 +10,14 @@ import {
   Linking,
   Platform,
   PermissionsAndroid,
-  SafeAreaView,
   ActionSheetIOS,
   Modal,
+  TextInput,
+  Dimensions,
+  Image,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import Header from '../components/Header';
 import SectionHeader from '../components/SectionHeader';
@@ -81,10 +83,17 @@ const JobDetails = ({ navigation, route }) => {
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [showFileSourceModal, setShowFileSourceModal] = useState(false);
   const [currentUploadSection, setCurrentUploadSection] = useState(null);
+  const [showCustomNameModal, setShowCustomNameModal] = useState(false);
+  const [pendingFileUpload, setPendingFileUpload] = useState(null);
+  const [customFileNameInput, setCustomFileNameInput] = useState('');
+  const [imageViewerVisible, setImageViewerVisible] = useState(false);
+  const [selectedImageForView, setSelectedImageForView] = useState([]);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   
   // Refs for scroll navigation
   const sectionRefs = useRef({});
   const scrollViewRef = useRef(null);
+  const imageScrollViewRef = useRef(null);
   
   // Use the new page loader hook
   const { shouldShowLoader, startLoading, stopLoading } = usePageLoader(true);
@@ -182,7 +191,7 @@ const JobDetails = ({ navigation, route }) => {
           jobData.inspection_reports.forEach(file => {
             inspectionReportFiles.push({
               id: file.id,
-              fileName: file.original_name || file.file_name || 'Unknown',
+              fileName: file.custom_file_name || file.custom_name || file.original_name || file.file_name || 'Unknown',
               fileType: file.file_type ? file.file_type.split('/')[1]?.toUpperCase() : 'PDF',
               url: file.url || file.file_url,
               file_type: file.file_type,
@@ -210,7 +219,7 @@ const JobDetails = ({ navigation, route }) => {
           inspectionReportUploads.forEach(file => {
             inspectionReportFiles.push({
               id: file.id,
-              fileName: file.original_name || file.file_name || 'Unknown',
+              fileName: file.custom_file_name || file.custom_name || file.original_name || file.file_name || 'Unknown',
               fileType: file.file_type ? file.file_type.split('/')[1]?.toUpperCase() : 'PDF',
               url: file.url || file.file_url,
               file_type: file.file_type,
@@ -236,7 +245,7 @@ const JobDetails = ({ navigation, route }) => {
           inspectionReportUploadFiles.forEach(file => {
             inspectionReportFiles.push({
               id: file.id,
-              fileName: file.original_name || file.file_name || 'Unknown',
+              fileName: file.custom_file_name || file.custom_name || file.original_name || file.file_name || 'Unknown',
               fileType: file.file_type ? file.file_type.split('/')[1]?.toUpperCase() : 'PDF',
               url: file.url || file.file_url,
               file_type: file.file_type,
@@ -453,7 +462,7 @@ const JobDetails = ({ navigation, route }) => {
           if (documentFiles.length > 0) {
             const mappedDocs = documentFiles.map(file => ({
               id: file.id,
-              fileName: file.original_name || file.file_name || 'Unknown',
+              fileName: file.custom_file_name || file.custom_name || file.original_name || file.file_name || 'Unknown',
               fileType: file.file_type ? file.file_type.split('/')[1].toUpperCase() : 'PDF',
               url: file.url || file.file_url,
               file_type: file.file_type
@@ -539,12 +548,15 @@ const JobDetails = ({ navigation, route }) => {
   };
 
   // File upload functions with API connectivity
-  const uploadDocument = async (fileUri, fileName, fileType, apiSection, originalSection = null) => {
+  const uploadDocument = async (fileUri, fileName, fileType, apiSection, originalSection = null, customFileName = null) => {
     try {
       const token = await getToken();
       if (!token) {
         throw new Error('No authentication token found');
       }
+
+      // Use customFileName if provided, otherwise use original fileName
+      const finalFileName = customFileName || fileName;
 
       // Show upload started toast
       const sectionName = getSectionDisplayName(originalSection || apiSection);
@@ -555,10 +567,15 @@ const JobDetails = ({ navigation, route }) => {
       formData.append('files[]', {
         uri: fileUri,
         type: fileType,
-        name: fileName,
+        name: finalFileName,
       });
 
-      console.log('Uploading document:', { fileName, fileType, apiSection, originalSection, jobId: project?.id });
+      // Add custom_file_name to FormData if provided
+      if (customFileName) {
+        formData.append('custom_file_name', customFileName);
+      }
+
+      console.log('Uploading document:', { fileName, fileType, apiSection, originalSection, jobId: project?.id, customFileName });
       console.log('API Section mapping:', { section: originalSection, apiSection });
       console.log('FormData created:', formData);
 
@@ -602,10 +619,13 @@ const JobDetails = ({ navigation, route }) => {
       console.log('Uploaded file data:', result.data);
 
       if (result.success) {
+        // Use custom_file_name from response if available, otherwise use the name we sent
+        const displayFileName = result.data?.custom_file_name || result.data?.custom_name || finalFileName;
+        
         // Add the uploaded file to the appropriate section
         const newFile = {
           id: result.data?.id || Date.now(),
-          fileName: fileName,
+          fileName: displayFileName, // Use custom name for display
           fileType: fileType.split('/')[1]?.toUpperCase() || 'PDF',
           url: result.data?.url || result.data?.file_url,
         };
@@ -645,14 +665,14 @@ const JobDetails = ({ navigation, route }) => {
             setBeforeImages(prev => [...prev, {
               id: result.data?.id || Date.now(),
               uri: fileUri,
-              name: fileName,
+              name: displayFileName,
             }]);
             break;
           case 'afterImages':
             setAfterImages(prev => [...prev, {
               id: result.data?.id || Date.now(),
               uri: fileUri,
-              name: fileName,
+              name: displayFileName,
             }]);
             break;
           case 'documents':
@@ -685,6 +705,19 @@ const JobDetails = ({ navigation, route }) => {
     }
   };
 
+  // Scroll to correct image when viewer opens
+  useEffect(() => {
+    if (imageViewerVisible && imageScrollViewRef.current && selectedImageForView.length > 0) {
+      // Small delay to ensure ScrollView is rendered
+      setTimeout(() => {
+        imageScrollViewRef.current?.scrollTo({
+          x: Dimensions.get('window').width * selectedImageIndex,
+          animated: false,
+        });
+      }, 100);
+    }
+  }, [imageViewerVisible, selectedImageIndex]);
+
   // Helper function to convert section names to API format
   const getApiSectionName = (section) => {
     const sectionMap = {
@@ -703,6 +736,77 @@ const JobDetails = ({ navigation, route }) => {
   // Helper function to get API section name
   const getApiSection = (section) => {
     return getApiSectionName(section);
+  };
+
+  // Prompt function for custom file name
+  const promptFileName = (defaultFileName) => {
+    return new Promise((resolve) => {
+      if (Platform.OS === 'ios') {
+        // iOS has built-in Alert.prompt
+        Alert.prompt(
+          'Enter File Name',
+          'Give this file a custom name:',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => resolve(null),
+            },
+            {
+              text: 'OK',
+              onPress: (text) => {
+                const name = text?.trim() || defaultFileName;
+                resolve(name || null);
+              },
+            },
+          ],
+          'plain-text',
+          defaultFileName.replace(/\.[^/.]+$/, '') // Remove extension for input
+        );
+      } else {
+        // For Android, show modal with TextInput
+        const nameWithoutExt = defaultFileName.replace(/\.[^/.]+$/, '');
+        setCustomFileNameInput(nameWithoutExt);
+        setPendingFileUpload({ defaultFileName, resolve });
+        setShowCustomNameModal(true);
+      }
+    });
+  };
+
+  // Handle custom name confirmation
+  const handleCustomNameConfirm = () => {
+    if (!pendingFileUpload) {
+      setShowCustomNameModal(false);
+      return;
+    }
+
+    const name = customFileNameInput.trim();
+    if (!name) {
+      showError('Please enter a file name');
+      return;
+    }
+
+    // Add extension if not present
+    let finalName = name;
+    const ext = pendingFileUpload.defaultFileName.split('.').pop();
+    if (ext && !finalName.includes('.')) {
+      finalName = `${finalName}.${ext}`;
+    }
+
+    setShowCustomNameModal(false);
+    pendingFileUpload.resolve(finalName);
+    setPendingFileUpload(null);
+    setCustomFileNameInput('');
+  };
+
+  // Handle custom name cancel
+  const handleCustomNameCancel = () => {
+    if (pendingFileUpload) {
+      pendingFileUpload.resolve(null);
+    }
+    setShowCustomNameModal(false);
+    setPendingFileUpload(null);
+    setCustomFileNameInput('');
   };
 
   // Camera handler
@@ -739,7 +843,30 @@ const JobDetails = ({ navigation, route }) => {
       });
 
       const apiSection = getApiSection(section);
-      await uploadDocument(image.path, image.filename || `photo_${Date.now()}.jpg`, image.mime || 'image/jpeg', apiSection, section);
+      const defaultFileName = image.filename || `photo_${Date.now()}.jpg`;
+      
+      // Prompt for custom name
+      const customFileName = await promptFileName(defaultFileName);
+      if (customFileName === null) {
+        // User cancelled
+        return;
+      }
+      
+      // Add extension if not present
+      let finalName = customFileName;
+      if (!finalName.includes('.')) {
+        const ext = defaultFileName.split('.').pop() || 'jpg';
+        finalName = `${finalName}.${ext}`;
+      }
+      
+      await uploadDocument(
+        image.path, 
+        defaultFileName, 
+        image.mime || 'image/jpeg', 
+        apiSection, 
+        section,
+        finalName // Pass custom name
+      );
     } catch (error) {
       // Handle cancel - check multiple possible cancel messages
       const isCancel = 
@@ -797,7 +924,30 @@ const JobDetails = ({ navigation, route }) => {
       });
 
       const apiSection = getApiSection(section);
-      await uploadDocument(image.path, image.filename || `image_${Date.now()}.jpg`, image.mime || 'image/jpeg', apiSection, section);
+      const defaultFileName = image.filename || `image_${Date.now()}.jpg`;
+      
+      // Prompt for custom name
+      const customFileName = await promptFileName(defaultFileName);
+      if (customFileName === null) {
+        // User cancelled
+        return;
+      }
+      
+      // Add extension if not present
+      let finalName = customFileName;
+      if (!finalName.includes('.')) {
+        const ext = defaultFileName.split('.').pop() || 'jpg';
+        finalName = `${finalName}.${ext}`;
+      }
+      
+      await uploadDocument(
+        image.path, 
+        defaultFileName, 
+        image.mime || 'image/jpeg', 
+        apiSection, 
+        section,
+        finalName // Pass custom name
+      );
     } catch (error) {
       // Handle cancel - check multiple possible cancel messages
       const isCancel = 
@@ -832,7 +982,30 @@ const JobDetails = ({ navigation, route }) => {
       if (result && result.length > 0) {
         const selectedFile = result[0];
         const apiSection = getApiSection(section);
-        await uploadDocument(selectedFile.uri, selectedFile.name, selectedFile.type, apiSection, section);
+        const defaultFileName = selectedFile.name;
+        
+        // Prompt for custom name
+        const customFileName = await promptFileName(defaultFileName);
+        if (customFileName === null) {
+          // User cancelled
+          return;
+        }
+        
+        // Add extension if not present
+        let finalName = customFileName;
+        if (!finalName.includes('.')) {
+          const ext = defaultFileName.split('.').pop() || 'pdf';
+          finalName = `${finalName}.${ext}`;
+        }
+        
+        await uploadDocument(
+          selectedFile.uri, 
+          defaultFileName, 
+          selectedFile.type, 
+          apiSection, 
+          section,
+          finalName // Pass custom name
+        );
       }
     } catch (error) {
       // Handle cancel - check multiple possible cancel codes/messages
@@ -880,7 +1053,134 @@ const JobDetails = ({ navigation, route }) => {
     setCurrentUploadSection(null);
   };
 
-  const handleFileView = async (file) => {
+  // Helper function to get images from a specific section only
+  const getImagesFromSection = (section) => {
+    switch (section) {
+      case 'beforeImages':
+      case 'beforePictures':
+        return beforeImages.map(img => ({
+          id: img.id,
+          uri: img.uri,
+          name: img.name
+        }));
+      case 'afterImages':
+      case 'afterPictures':
+        return afterImages.map(img => ({
+          id: img.id,
+          uri: img.uri,
+          name: img.name
+        }));
+      case 'inspectionReports':
+      case 'inspectionReport':
+        return inspectionReports.filter(f => {
+          const type = f.fileType || (f.file_type ? f.file_type.split('/')[1]?.toLowerCase() : '');
+          const mime = f.file_type || f.fileType || '';
+          return mime.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(type?.toLowerCase());
+        }).map(f => ({
+          id: f.id,
+          uri: f.url || f.file_url,
+          name: f.fileName || f.original_name
+        }));
+      case 'measurements':
+      case 'measurement':
+        return measurements.filter(f => {
+          const type = f.fileType || (f.file_type ? f.file_type.split('/')[1]?.toLowerCase() : '');
+          const mime = f.file_type || f.fileType || '';
+          return mime.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(type?.toLowerCase());
+        }).map(f => ({
+          id: f.id,
+          uri: f.url || f.file_url,
+          name: f.fileName || f.original_name
+        }));
+      case 'documents':
+      case 'fileupload':
+        return documents.filter(f => {
+          const type = f.fileType || (f.file_type ? f.file_type.split('/')[1]?.toLowerCase() : '');
+          const mime = f.file_type || f.fileType || '';
+          return mime.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(type?.toLowerCase());
+        }).map(f => ({
+          id: f.id,
+          uri: f.url || f.file_url,
+          name: f.fileName || f.original_name
+        }));
+      case 'proposals':
+      case 'proposal':
+        return proposals.filter(f => {
+          const type = f.fileType || (f.file_type ? f.file_type.split('/')[1]?.toLowerCase() : '');
+          const mime = f.file_type || f.fileType || '';
+          return mime.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(type?.toLowerCase());
+        }).map(f => ({
+          id: f.id,
+          uri: f.url || f.file_url,
+          name: f.fileName || f.original_name
+        }));
+      case 'invoices':
+      case 'invoice':
+        return invoices.filter(f => {
+          const type = f.fileType || (f.file_type ? f.file_type.split('/')[1]?.toLowerCase() : '');
+          const mime = f.file_type || f.fileType || '';
+          return mime.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(type?.toLowerCase());
+        }).map(f => ({
+          id: f.id,
+          uri: f.url || f.file_url,
+          name: f.fileName || f.original_name
+        }));
+      case 'workOrders':
+      case 'workOrder':
+        return workOrders.filter(f => {
+          const type = f.fileType || (f.file_type ? f.file_type.split('/')[1]?.toLowerCase() : '');
+          const mime = f.file_type || f.fileType || '';
+          return mime.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(type?.toLowerCase());
+        }).map(f => ({
+          id: f.id,
+          uri: f.url || f.file_url,
+          name: f.fileName || f.original_name
+        }));
+      default:
+        return [];
+    }
+  };
+
+  // Helper function to get all images from all sections (keep for backward compatibility if needed)
+  const getAllImagesFromFile = (file) => {
+    // Combine all image sources
+    const allImages = [
+      ...beforeImages,
+      ...afterImages,
+      // Also check other sections for images
+      ...inspectionReports.filter(f => {
+        const type = f.fileType || (f.file_type ? f.file_type.split('/')[1]?.toLowerCase() : '');
+        const mime = f.file_type || f.fileType || '';
+        return mime.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(type?.toLowerCase());
+      }).map(f => ({
+        id: f.id,
+        uri: f.url || f.file_url,
+        name: f.fileName || f.original_name
+      })),
+      ...measurements.filter(f => {
+        const type = f.fileType || (f.file_type ? f.file_type.split('/')[1]?.toLowerCase() : '');
+        const mime = f.file_type || f.fileType || '';
+        return mime.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(type?.toLowerCase());
+      }).map(f => ({
+        id: f.id,
+        uri: f.url || f.file_url,
+        name: f.fileName || f.original_name
+      })),
+      ...documents.filter(f => {
+        const type = f.fileType || (f.file_type ? f.file_type.split('/')[1]?.toLowerCase() : '');
+        const mime = f.file_type || f.fileType || '';
+        return mime.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(type?.toLowerCase());
+      }).map(f => ({
+        id: f.id,
+        uri: f.url || f.file_url,
+        name: f.fileName || f.original_name
+      })),
+    ];
+    
+    return allImages;
+  };
+
+  const handleFileView = async (file, section = null) => {
     try {
       // Handle different file types
       if (typeof file === 'string') {
@@ -903,24 +1203,124 @@ const JobDetails = ({ navigation, route }) => {
       }
 
       const fileName = file.fileName || file.original_name || file.name || 'Unknown';
-      const fileType = file.fileType || (file.file_type ? file.file_type.split('/')[1] : 'unknown');
+      const fileType = file.fileType || (file.file_type ? file.file_type.split('/')[1]?.toLowerCase() : 'unknown');
+      const mimeType = file.file_type || file.fileType || '';
 
-      console.log('Opening file:', { fileName, fileType, fileUrl });
+      console.log('Opening file:', { fileName, fileType, mimeType, fileUrl, section });
 
-      // Check if the URL can be opened
-      const canOpen = await Linking.canOpenURL(fileUrl);
+      // Check if it's an image
+      const isImage = mimeType.startsWith('image/') || 
+                     ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileType?.toLowerCase()) ||
+                     fileUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+
+      if (isImage) {
+        // For images, show in image viewer modal instead of opening URL
+        // Get images from the specific section only if section is provided
+        const sectionImages = section ? getImagesFromSection(section) : getAllImagesFromFile(file);
+        
+        const imageIndex = sectionImages.findIndex(img => 
+          (img.id && file.id && img.id === file.id) || 
+          (img.uri === fileUrl || img.url === fileUrl || img.file_url === fileUrl)
+        );
+        
+        if (imageIndex >= 0 || sectionImages.length > 0) {
+          setSelectedImageForView(sectionImages);
+          setSelectedImageIndex(imageIndex >= 0 ? imageIndex : 0);
+          setImageViewerVisible(true);
+        } else {
+          // Single image
+          setSelectedImageForView([{
+            id: file.id,
+            uri: fileUrl,
+            name: fileName
+          }]);
+          setSelectedImageIndex(0);
+          setImageViewerVisible(true);
+        }
+        return; // Don't try to open URL for images
+      }
+
+      // For PDFs and documents, download and open locally (don't redirect to website)
+      const token = await getToken();
+      showInfo('Opening file...');
       
-      if (canOpen) {
-        // Open the file with the default app
-        await Linking.openURL(fileUrl);
+      // Download file temporarily and open
+      const fileExtension = fileType || 'pdf';
+      const tempFileName = `${fileName.includes('.') ? fileName : `${fileName}.${fileExtension}`}`;
+      
+      // Ensure directory paths are defined and have proper separators
+      let tempFilePath;
+      if (Platform.OS === 'android') {
+        const cacheDir = RNFS.CacheDirectory || RNFS.DocumentDirectoryPath;
+        if (!cacheDir) {
+          throw new Error('Cache directory not available');
+        }
+        // Ensure trailing slash
+        const separator = cacheDir.endsWith('/') ? '' : '/';
+        tempFilePath = `${cacheDir}${separator}${tempFileName}`;
       } else {
-        // Fallback: try to open in browser
-        const browserUrl = fileUrl.startsWith('http') ? fileUrl : `https://app.stormbuddi.com/${fileUrl}`;
-        await Linking.openURL(browserUrl);
+        const docDir = RNFS.DocumentDirectoryPath;
+        if (!docDir) {
+          throw new Error('Document directory not available');
+        }
+        // Ensure trailing slash
+        const separator = docDir.endsWith('/') ? '' : '/';
+        tempFilePath = `${docDir}${separator}${tempFileName}`;
+      }
+
+      // Download file with auth headers
+      const downloadResult = await RNFS.downloadFile({
+        fromUrl: fileUrl,
+        toFile: tempFilePath,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': '*/*',
+        },
+      }).promise;
+
+      if (downloadResult.statusCode === 200) {
+        // Open the downloaded file locally
+        const fileExists = await RNFS.exists(tempFilePath);
+        if (fileExists) {
+          // Use file:// protocol for local files
+          const localFileUrl = Platform.OS === 'android' 
+            ? `file://${tempFilePath}`
+            : tempFilePath;
+          
+          try {
+            const canOpenLocal = await Linking.canOpenURL(localFileUrl);
+            if (canOpenLocal) {
+              await Linking.openURL(localFileUrl);
+            } else {
+              // For Android, try content:// URI or Share
+              if (Platform.OS === 'android') {
+                // Try using Share to open file
+                const Share = require('react-native').Share;
+                try {
+                  await Share.share({
+                    url: localFileUrl,
+                    title: fileName,
+                  });
+                } catch (shareError) {
+                  showError('Unable to open file. Please download it instead.');
+                }
+              } else {
+                showError('Unable to open file. Please download it instead.');
+              }
+            }
+          } catch (openError) {
+            console.error('Error opening local file:', openError);
+            showError('Unable to open file. Please download it instead.');
+          }
+        } else {
+          throw new Error('File download failed');
+        }
+      } else {
+        throw new Error(`Download failed: ${downloadResult.statusCode}`);
       }
     } catch (error) {
       console.error('Error opening file:', error);
-      showError('Unable to open file. Please check if you have an app installed to view this file type.');
+      showError(`Unable to open file: ${error.message || 'Please try downloading it instead.'}`);
     }
   };
 
@@ -965,8 +1365,9 @@ const JobDetails = ({ navigation, route }) => {
       if (Platform.OS === 'android') {
         // Try DownloadDirectoryPath first, if not available, construct Downloads path
         if (RNFS.DownloadDirectoryPath) {
-          filePath = `${RNFS.DownloadDirectoryPath}/${fullFileName}`;
-        } else {
+          const separator = RNFS.DownloadDirectoryPath.endsWith('/') ? '' : '/';
+          filePath = `${RNFS.DownloadDirectoryPath}${separator}${fullFileName}`;
+        } else if (RNFS.ExternalStorageDirectoryPath) {
           // Construct Downloads folder path manually
           const downloadsPath = `${RNFS.ExternalStorageDirectoryPath}/Download`;
           // Ensure Downloads directory exists
@@ -975,10 +1376,23 @@ const JobDetails = ({ navigation, route }) => {
             await RNFS.mkdir(downloadsPath);
           }
           filePath = `${downloadsPath}/${fullFileName}`;
+        } else {
+          // Fallback to DocumentDirectoryPath if ExternalStorageDirectoryPath is not available
+          const docDir = RNFS.DocumentDirectoryPath;
+          if (!docDir) {
+            throw new Error('No available directory for file download');
+          }
+          const separator = docDir.endsWith('/') ? '' : '/';
+          filePath = `${docDir}${separator}${fullFileName}`;
         }
       } else {
         // iOS: Save to Documents directory
-        filePath = `${RNFS.DocumentDirectoryPath}/${fullFileName}`;
+        const docDir = RNFS.DocumentDirectoryPath;
+        if (!docDir) {
+          throw new Error('Document directory not available');
+        }
+        const separator = docDir.endsWith('/') ? '' : '/';
+        filePath = `${docDir}${separator}${fullFileName}`;
       }
 
       // Use RNFS.downloadFile for better binary file handling
@@ -1239,7 +1653,10 @@ const JobDetails = ({ navigation, route }) => {
             { backgroundColor: statusStyle.backgroundColor },
             isDarkNavy && styles.statusTagWithShadow
           ]}>
-            <Text style={[styles.statusTagText, { color: statusStyle.textColor }]}>
+            <Text 
+              style={[styles.statusTagText, { color: statusStyle.textColor }]}
+              numberOfLines={1}
+            >
               {jobStatus}
             </Text>
           </View>
@@ -1348,7 +1765,7 @@ const JobDetails = ({ navigation, route }) => {
             key={file.id}
             fileName={file.fileName}
             fileType={file.fileType}
-            onView={() => handleFileView(file)}
+            onView={() => handleFileView(file, sectionName)}
             onDownload={() => handleFileDownload(file)}
           />
         ))}
@@ -1387,7 +1804,7 @@ const JobDetails = ({ navigation, route }) => {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       {/* Global Page Loader */}
       <PageLoader 
         visible={shouldShowLoader}
@@ -1396,7 +1813,7 @@ const JobDetails = ({ navigation, route }) => {
       
       {/* Only show content when not loading */}
       {!shouldShowLoader && (
-        <View style={[styles.contentContainer, { paddingBottom: insets.bottom }]}>
+        <View style={styles.contentContainer}>
           {/* Vertical Status Tag */}
           {renderStatusTag()}
           
@@ -1433,6 +1850,7 @@ const JobDetails = ({ navigation, route }) => {
           />
           
           <View style={styles.jobDetailsCard}>
+            <Text style={[styles.fieldLabel, styles.firstFieldLabel]}>Job Title</Text>
             <InputField
               placeholder="Title.."
               value={jobDetails.title}
@@ -1441,16 +1859,32 @@ const JobDetails = ({ navigation, route }) => {
               showUnderline={isEditing}
               editable={isEditing}
             />
-            <InputField
-              placeholder="Description.."
-              value={jobDetails.description}
-              onChangeText={(text) => setJobDetails(prev => ({ ...prev, description: text }))}
-              multiline={true}
-              numberOfLines={4}
-              style={styles.descriptionInput}
-              showUnderline={isEditing}
-              editable={isEditing}
-            />
+            <Text style={styles.fieldLabel}>Job Description</Text>
+            {isEditing ? (
+              <InputField
+                placeholder="Description.."
+                value={jobDetails.description}
+                onChangeText={(text) => setJobDetails(prev => ({ ...prev, description: text }))}
+                multiline={true}
+                numberOfLines={4}
+                style={styles.descriptionInput}
+                showUnderline={isEditing}
+                editable={isEditing}
+              />
+            ) : (
+              <View style={styles.descriptionContainer}>
+                <ScrollView 
+                  style={styles.descriptionScrollView}
+                  contentContainerStyle={styles.descriptionScrollContent}
+                  nestedScrollEnabled={true}
+                  showsVerticalScrollIndicator={true}
+                >
+                  <Text style={styles.descriptionText}>
+                    {jobDetails.description || 'No description available'}
+                  </Text>
+                </ScrollView>
+              </View>
+            )}
             
             {isEditing && (
               <View style={styles.editButtons}>
@@ -1507,7 +1941,7 @@ const JobDetails = ({ navigation, route }) => {
               key={file.id}
               fileName={file.fileName}
               fileType={file.fileType}
-              onView={() => handleFileView(file)}
+              onView={() => handleFileView(file, 'invoices')}
               onDownload={() => handleFileDownload(file)}
             />
           ))}
@@ -1527,6 +1961,11 @@ const JobDetails = ({ navigation, route }) => {
           <ImageGallery
             images={beforeImages}
             title="Before Images"
+            onImagePress={(image, index) => {
+              setSelectedImageForView(beforeImages);
+              setSelectedImageIndex(index);
+              setImageViewerVisible(true);
+            }}
           />
 
           <UploadButton
@@ -1539,6 +1978,11 @@ const JobDetails = ({ navigation, route }) => {
           <ImageGallery
             images={afterImages}
             title="After Images"
+            onImagePress={(image, index) => {
+              setSelectedImageForView(afterImages);
+              setSelectedImageIndex(index);
+              setImageViewerVisible(true);
+            }}
           />
         </View>
 
@@ -1583,7 +2027,144 @@ const JobDetails = ({ navigation, route }) => {
         onClose={() => setShowFileSourceModal(false)}
         onSelectSource={handleFileSourceSelect}
       />
-    </SafeAreaView>
+
+      {/* Custom File Name Modal for Android */}
+      <Modal
+        visible={showCustomNameModal}
+        transparent
+        animationType="slide"
+        onRequestClose={handleCustomNameCancel}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>Enter File Name</Text>
+            <Text style={styles.modalSubtitle}>Give this file a custom name</Text>
+            
+            <TextInput
+              style={styles.modalInput}
+              value={customFileNameInput}
+              onChangeText={setCustomFileNameInput}
+              placeholder="Enter file name"
+              autoFocus
+              maxLength={100}
+            />
+            
+            <View style={styles.modalButtonContainer}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalCancelButton]}
+                onPress={handleCustomNameCancel}
+              >
+                <Text style={styles.modalCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalConfirmButton]}
+                onPress={handleCustomNameConfirm}
+              >
+                <Text style={styles.modalConfirmButtonText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Image Viewer Modal */}
+      {imageViewerVisible && selectedImageForView && selectedImageForView.length > 0 && (
+        <Modal
+          visible={imageViewerVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setImageViewerVisible(false)}
+        >
+          <SafeAreaView style={styles.imageViewerContainer}>
+            {/* Header */}
+            <View style={styles.imageViewerHeader}>
+              <Text style={styles.imageViewerTitle}>
+                {selectedImageIndex + 1} / {selectedImageForView.length}
+              </Text>
+              <TouchableOpacity
+                style={styles.imageViewerCloseButton}
+                onPress={() => setImageViewerVisible(false)}
+              >
+                <Icon name="close" size={28} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Image Container */}
+            <ScrollView
+              ref={imageScrollViewRef}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              style={styles.imageViewerContent}
+              onMomentumScrollEnd={(event) => {
+                const index = Math.round(event.nativeEvent.contentOffset.x / Dimensions.get('window').width);
+                setSelectedImageIndex(index);
+              }}
+            >
+              {selectedImageForView.map((img, index) => {
+                let imgUrl = img.uri || img.url || img.file_url;
+                // Ensure full URL
+                if (imgUrl && !imgUrl.startsWith('http')) {
+                  imgUrl = `https://app.stormbuddi.com/${imgUrl}`;
+                }
+                
+                return (
+                  <View key={img.id || index} style={styles.fullImageContainer}>
+                    <Image
+                      source={{ uri: imgUrl }}
+                      style={styles.fullImage}
+                      resizeMode="contain"
+                    />
+                  </View>
+                );
+              })}
+            </ScrollView>
+
+            {/* Navigation Arrows */}
+            {selectedImageForView.length > 1 && (
+              <>
+                <TouchableOpacity
+                  style={[styles.navArrow, styles.navArrowLeft]}
+                  onPress={() => {
+                    const prevIndex = selectedImageIndex > 0 ? selectedImageIndex - 1 : selectedImageForView.length - 1;
+                    setSelectedImageIndex(prevIndex);
+                    imageScrollViewRef.current?.scrollTo({
+                      x: Dimensions.get('window').width * prevIndex,
+                      animated: true,
+                    });
+                  }}
+                >
+                  <Icon name="chevron-left" size={32} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.navArrow, styles.navArrowRight]}
+                  onPress={() => {
+                    const nextIndex = selectedImageIndex < selectedImageForView.length - 1 ? selectedImageIndex + 1 : 0;
+                    setSelectedImageIndex(nextIndex);
+                    imageScrollViewRef.current?.scrollTo({
+                      x: Dimensions.get('window').width * nextIndex,
+                      animated: true,
+                    });
+                  }}
+                >
+                  <Icon name="chevron-right" size={32} color="#fff" />
+                </TouchableOpacity>
+              </>
+            )}
+
+            {/* Footer - File name */}
+            {selectedImageForView[selectedImageIndex] && (
+              <View style={styles.imageViewerFooter}>
+                <Text style={styles.imageViewerFileName} numberOfLines={1}>
+                  {selectedImageForView[selectedImageIndex].name || `Image ${selectedImageIndex + 1}`}
+                </Text>
+              </View>
+            )}
+          </SafeAreaView>
+        </Modal>
+      )}
+    </View>
   );
 };
 
@@ -1606,9 +2187,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   statusTag: {
-    width: 120,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
+    width: 160,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
     borderRadius: 8,
     marginBottom: 8,
     transform: [{ rotate: '90deg' }],
@@ -1622,6 +2203,7 @@ const styles = StyleSheet.create({
     elevation: 4,
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 40,
   },
   statusTagWithShadow: {
     shadowColor: colors.primary,
@@ -1639,6 +2221,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     textAlign: 'center',
+    flexShrink: 1,
   },
   contentContainer: {
     flex: 1,
@@ -1664,14 +2247,56 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
   },
+  fieldLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
+    marginTop: 8,
+  },
+  firstFieldLabel: {
+    marginTop: 0,
+  },
   titleInput: {
-    marginBottom: 16,
+    marginBottom: 0,
   },
   titleInputDefault: {
+    marginBottom: 0,
+  },
+  descriptionContainer: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    backgroundColor: colors.background,
+    minHeight: 100,
+    maxHeight: 200,
     marginBottom: 16,
+    shadowColor: colors.shadowColor,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  descriptionScrollView: {
+    flex: 1,
+  },
+  descriptionScrollContent: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  descriptionText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    fontWeight: '500',
   },
   descriptionInput: {
     marginBottom: 0,
+    minHeight: 100,
+    maxHeight: 200,
   },
   editButtons: {
     flexDirection: 'row',
@@ -1748,6 +2373,133 @@ const styles = StyleSheet.create({
   uploadButtonFormats: {
     fontSize: 12,
     color: colors.textLight,
+    textAlign: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    width: '85%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    color: '#333',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 20,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 20,
+  },
+  modalButtonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  modalButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalCancelButton: {
+    backgroundColor: '#f5f5f5',
+    marginRight: 10,
+  },
+  modalCancelButtonText: {
+    color: '#666',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalConfirmButton: {
+    backgroundColor: '#4DA3FF',
+    marginLeft: 10,
+  },
+  modalConfirmButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  imageViewerContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+  },
+  imageViewerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  imageViewerTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  imageViewerCloseButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  imageViewerContent: {
+    flex: 1,
+  },
+  fullImageContainer: {
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullImage: {
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height,
+  },
+  navArrow: {
+    position: 'absolute',
+    top: '50%',
+    width: 50,
+    height: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 25,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    marginTop: -25,
+    zIndex: 10,
+  },
+  navArrowLeft: {
+    left: 16,
+  },
+  navArrowRight: {
+    right: 16,
+  },
+  imageViewerFooter: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    alignItems: 'center',
+  },
+  imageViewerFileName: {
+    fontSize: 14,
+    color: '#fff',
     textAlign: 'center',
   },
 });
