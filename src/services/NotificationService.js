@@ -105,12 +105,30 @@ class NotificationService {
     try {
       // On iOS, we must register for remote messages before getting the token
       if (Platform.OS === 'ios') {
+        // First check if we have permission
+        const authStatus = await messaging().hasPermission();
+        const hasPermission = authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+                            authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+        
+        if (!hasPermission) {
+          console.log('[NotificationService] No permission granted yet, cannot get FCM token');
+          return null;
+        }
+
+        // Register device for remote messages
         try {
           await messaging().registerDeviceForRemoteMessages();
           console.log('[NotificationService] Device registered for remote messages before getting token');
+          // Small delay to ensure registration completes
+          await new Promise(resolve => setTimeout(resolve, 100));
         } catch (error) {
-          // If already registered, this will throw an error - that's okay
-          console.log('[NotificationService] Device may already be registered:', error.message);
+          // Check if error is because already registered
+          if (error.code === 'messaging/already-registered' || error.message?.includes('already registered')) {
+            console.log('[NotificationService] Device already registered for remote messages');
+          } else {
+            // If it's a different error, log it but continue - might still work
+            console.warn('[NotificationService] Registration warning:', error.message);
+          }
         }
       }
       
@@ -118,6 +136,10 @@ class NotificationService {
       return token;
     } catch (error) {
       console.error('Error getting FCM token:', error);
+      // If it's the unregistered error, provide more helpful message
+      if (error.code === 'messaging/unregistered' || error.message?.includes('registered for remote messages')) {
+        console.error('[NotificationService] Device not registered. Make sure to call requestPermission() first on iOS.');
+      }
       return null;
     }
   }

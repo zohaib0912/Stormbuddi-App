@@ -15,15 +15,19 @@ const useNotifications = () => {
     try {
       setLoading(true);
       
-      // Get FCM token
-      const token = await NotificationService.getFCMToken();
-      setFcmToken(token);
-
-      // Check if permission is granted
+      // Check if permission is granted first
       const authStatus = await messaging().hasPermission();
       const granted = authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
                      authStatus === messaging.AuthorizationStatus.PROVISIONAL;
       setIsPermissionGranted(granted);
+
+      // Only get FCM token if permission is granted
+      if (granted) {
+        const token = await NotificationService.getFCMToken();
+        setFcmToken(token);
+      } else {
+        console.log('[useNotifications] Permission not granted, skipping FCM token retrieval');
+      }
 
     } catch (error) {
       console.error('Error initializing notifications:', error);
