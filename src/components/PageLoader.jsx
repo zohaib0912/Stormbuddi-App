@@ -4,12 +4,8 @@ import {
   Text,
   ActivityIndicator,
   StyleSheet,
-  Modal,
-  Dimensions,
 } from 'react-native';
 import { colors } from '../theme/colors';
-
-const { width, height } = Dimensions.get('window');
 
 /**
  * Global Page Loader Component
@@ -21,34 +17,27 @@ const PageLoader = ({
   size = 'large',
   color = colors.primary,
   backgroundColor = 'rgba(255, 255, 255, 0.95)',
-  overlayColor = 'rgba(0, 0, 0, 0.3)'
+  overlayColor = 'rgba(0, 0, 0, 0.3)',
 }) => {
   if (!visible) return null;
 
   return (
-    <Modal
-      transparent={true}
-      animationType="fade"
-      visible={visible}
-      statusBarTranslucent={true}
-    >
-      <View style={[styles.overlay, { backgroundColor: overlayColor }]}>
-        <View style={[styles.container, { backgroundColor }]}>
-          <ActivityIndicator size={size} color={color} />
-          <Text style={styles.message}>{message}</Text>
-        </View>
+    <View style={[styles.overlay, { backgroundColor: overlayColor }]}>
+      <View style={[styles.container, { backgroundColor }]}>
+        <ActivityIndicator size={size} color={color} />
+        <Text style={styles.message}>{message}</Text>
       </View>
-    </Modal>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   overlay: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    width: width,
-    height: height,
+    zIndex: 9999,
+    elevation: 9999,
   },
   container: {
     alignItems: 'center',

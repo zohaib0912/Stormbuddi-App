@@ -51,83 +51,69 @@ const CreateCustomerModal = ({
       const token = await getToken();
       if (!token) return;
 
-      // Try to fetch subscription plans from API
-      // Common endpoint patterns: /subscription-plans, /subscriptions, /plans, /subscription-plans/list
-      const possibleEndpoints = [
-        'https://app.stormbuddi.com/api/customer-subscription-plans',
-       
-      ];
+      // Fetch subscription plans from the correct API endpoint
+      const endpoint = 'https://app.stormbuddi.com/api/mobile/clients/subscription-plans';
 
-      let plansFetched = false;
+      try {
+        const response = await fetch(endpoint, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Authorization': `Bearer ${token}`,
+          },
+        });
 
-      for (const endpoint of possibleEndpoints) {
-        try {
-          const response = await fetch(endpoint, {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest',
-              'Authorization': `Bearer ${token}`,
-            },
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            
-            // Handle different response structures
-            let plansList = [];
-            if (data.success && data.plans) {
-              // API returns { success: true, plans: [...] }
-              plansList = Array.isArray(data.plans) ? data.plans : [data.plans];
-            } else if (data.success && data.data) {
-              // Alternative structure: { success: true, data: [...] }
-              plansList = Array.isArray(data.data) ? data.data : [data.data];
-            } else if (Array.isArray(data.plans)) {
-              plansList = data.plans;
-            } else if (Array.isArray(data.data)) {
-              plansList = data.data;
-            } else if (Array.isArray(data)) {
-              plansList = data;
-            }
-
-            if (plansList.length > 0) {
-              // Store full plan objects for later use
-              setSubscriptionPlansData(plansList);
-              
-              // Extract names for dropdown display
-              const planNames = plansList.map(plan => 
-                plan.name || plan.Name || plan.title || plan.slug || plan.Slug
-              );
-              setSubscriptionPackages(planNames);
-              console.log('Fetched subscription plans from API:', plansList);
-              plansFetched = true;
-              break;
-            } else {
-              console.warn('API returned empty plans array. Response:', data);
-            }
-          } else {
-            console.warn(`API request failed with status ${response.status} for endpoint: ${endpoint}`);
+        if (response.ok) {
+          const data = await response.json();
+          
+          // Handle different response structures
+          let plansList = [];
+          if (data.success && data.plans) {
+            // API returns { success: true, plans: [...] }
+            plansList = Array.isArray(data.plans) ? data.plans : [data.plans];
+          } else if (data.success && data.data) {
+            // Alternative structure: { success: true, data: [...] }
+            plansList = Array.isArray(data.data) ? data.data : [data.data];
+          } else if (Array.isArray(data.plans)) {
+            plansList = data.plans;
+          } else if (Array.isArray(data.data)) {
+            plansList = data.data;
+          } else if (Array.isArray(data)) {
+            plansList = data;
           }
-        } catch (err) {
-          // Try next endpoint
-          continue;
+
+          if (plansList.length > 0) {
+            // Store full plan objects for later use
+            setSubscriptionPlansData(plansList);
+            
+            // Extract names for dropdown display
+            const planNames = plansList.map(plan => 
+              plan.name || plan.Name || plan.title || plan.slug || plan.Slug
+            );
+            setSubscriptionPackages(planNames);
+            return;
+          } else {
+            console.warn('API returned empty plans array. Response:', data);
+          }
+        } else {
+          console.warn(`API request failed with status ${response.status} for endpoint: ${endpoint}`);
         }
+      } catch (err) {
+        console.error('Error fetching subscription plans from API:', err);
       }
 
-      // Fallback: If no API endpoint works, use hardcoded values from the database
-      if (!plansFetched) {
-        const fallbackPlans = [
-          { id: 17, name: 'Bronze Package', slug: 'bronze' },
-          { id: 18, name: 'Silver Package', slug: 'silver' },
-          { id: 19, name: 'Gold Package', slug: 'gold' },
-          { id: 20, name: 'Platinum Package', slug: 'platinum' },
-          { id: 22, name: 'Public Plan', slug: 'public' },
-        ];
-        setSubscriptionPlansData(fallbackPlans);
-        setSubscriptionPackages(fallbackPlans.map(p => p.name));
-        console.log('Using fallback subscription plans:', fallbackPlans);
-      }
+      // Fallback: If API endpoint fails, use hardcoded values from the database
+      const fallbackPlans = [
+        { id: 17, name: 'Bronze Package', slug: 'bronze' },
+        { id: 18, name: 'Silver Package', slug: 'silver' },
+        { id: 19, name: 'Gold Package', slug: 'gold' },
+        { id: 20, name: 'Platinum Package', slug: 'platinum' },
+        { id: 22, name: 'Public Plan', slug: 'public' },
+      ];
+      setSubscriptionPlansData(fallbackPlans);
+      setSubscriptionPackages(fallbackPlans.map(p => p.name));
     } catch (error) {
       console.error('Error fetching subscription plans:', error);
       // Use hardcoded fallback values
@@ -308,9 +294,8 @@ const CreateCustomerModal = ({
       newErrors.email = 'Please enter a valid email address';
     }
     
-    if (!formData.phone.trim()) {
-      newErrors.phone = 'Phone number is required';
-    } else if (!validatePhone(formData.phone)) {
+    // Phone number is optional, but if provided, validate format
+    if (formData.phone.trim() && !validatePhone(formData.phone)) {
       newErrors.phone = 'Please enter a valid phone number';
     }
     
@@ -360,12 +345,8 @@ const CreateCustomerModal = ({
         SubscriptionsPlan: subscriptionPlanValue, // Send slug or ID instead of name
       };
       
-      console.log('Sending API data:', apiData);
-      console.log('Subscription plan mapping:', {
-        selectedName: formData.subscription_package,
-        sendingValue: subscriptionPlanValue,
-        availablePlans: subscriptionPlansData
-      });
+      
+      
     
       const response = await fetch('https://app.stormbuddi.com/api/mobile/clients', {
         method: 'POST',
@@ -380,7 +361,7 @@ const CreateCustomerModal = ({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.log('API Error Response:', errorData);
+        
         
         // Handle Laravel validation errors (422 status code typically)
         if (errorData.errors && typeof errorData.errors === 'object') {
@@ -416,7 +397,7 @@ const CreateCustomerModal = ({
           
           // Set validation errors on form
           if (Object.keys(validationErrors).length > 0) {
-            console.log('Setting validation errors:', validationErrors);
+            
             setErrors(validationErrors);
             showError(errorData.message || 'Please fix the validation errors above.');
             setLoading(false);
@@ -434,10 +415,10 @@ const CreateCustomerModal = ({
       }
 
       const data = await response.json();
-      console.log('API Success Response:', data);
+      
       
       if (data.success) {
-        console.log('Customer created successfully:', data);
+        
         
         showSuccess('Customer created successfully!');
         onSubmit(data.data || apiData);
@@ -474,7 +455,7 @@ const CreateCustomerModal = ({
           });
           
           if (Object.keys(validationErrors).length > 0) {
-            console.log('Setting validation errors from non-success response:', validationErrors);
+            
             setErrors(validationErrors);
             showError(data.message || 'Please fix the validation errors above.');
             setLoading(false);
@@ -600,7 +581,7 @@ const CreateCustomerModal = ({
 
             {/* Phone Number Input */}
             <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Phone Number *</Text>
+              <Text style={styles.inputLabel}>Phone Number</Text>
               <TextInput
                 style={[
                   styles.textInput,

@@ -130,7 +130,7 @@ const mapLeadStatusToMarkerKey = (leadStatus) => {
 };
 
 const getColorForHailSize = (size) => {
-  const defaultColor = 'rgba(255, 255, 255, 0.3)';
+  const defaultColor = 'rgba(255, 255, 255, 0.75)';
   if (!size && size !== 0) {
     return defaultColor;
   }
@@ -147,7 +147,15 @@ const getColorForHailSize = (size) => {
   const r = parseInt(hex.substring(0, 2), 16);
   const g = parseInt(hex.substring(2, 4), 16);
   const b = parseInt(hex.substring(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, 0.3)`;
+  return `rgba(${r}, ${g}, ${b}, 0.75)`;
+};
+
+const getSolidColorForHailSize = (size) => {
+  if (!size && size !== 0) return '#FFFFFF';
+  const numericSize = typeof size === 'number' ? size : parseFloat(size);
+  if (Number.isNaN(numericSize)) return '#FFFFFF';
+  const entry = HAIL_SIZE_COLORS.find(({ threshold }) => numericSize <= threshold);
+  return entry ? entry.color : '#FFFFFF';
 };
 
 // Try to import MapView, handle if it fails
@@ -223,7 +231,7 @@ const Canvassing = ({ navigation }) => {
   const [searchAddressText, setSearchAddressText] = useState('');
 
   // Use the page loader hook - start with false, only show when screen is focused
-  const { shouldShowLoader, startLoading, stopLoading, resetLoader } = usePageLoader(false);
+  const { shouldShowLoader, startLoading, stopLoading, resetLoader } = usePageLoader(true);
 
   const handleNotificationPress = () => {
     // Handle notification press if needed
@@ -908,9 +916,13 @@ const Canvassing = ({ navigation }) => {
       if (!selectedDate && parsed.length > 0) {
         setSelectedDate(parsed[0].date);
       }
+      if (parsed.length === 0) {
+        stopLoading();
+      }
     } catch (error) {
       console.error('Hail dates fetch error:', error);
       setCustomersError(error.message || 'Failed to load hail dates');
+      stopLoading();
     }
   };
 
@@ -1132,8 +1144,8 @@ const Canvassing = ({ navigation }) => {
           coordinates: polygonCoordinates,
           properties: feature.properties || {},
           fillColor: feature.properties?.color || getColorForHailSize(hailSizeValue),
-          strokeColor: 'transparent',
-          strokeWidth: 0,
+          strokeColor: feature.properties?.color || getSolidColorForHailSize(hailSizeValue),
+          strokeWidth: 1,
         });
       } else if (feature.geometry && feature.geometry.type === 'MultiPolygon') {
         // Handle MultiPolygon - create separate polygon for each polygon in the multipolygon
@@ -1155,8 +1167,8 @@ const Canvassing = ({ navigation }) => {
             coordinates: polygonCoordinates,
             properties: feature.properties || {},
             fillColor: feature.properties?.color || getColorForHailSize(hailSizeValue),
-            strokeColor: 'transparent',
-            strokeWidth: 0,
+            strokeColor: feature.properties?.color || getSolidColorForHailSize(hailSizeValue),
+            strokeWidth: 1,
           });
         });
       }
@@ -1540,12 +1552,17 @@ const getPolygonCentroid = (coordinates = []) => {
                           customer.city ||
                           undefined
                         }
-                        image={getMarkerIconSource(mapLeadStatusToMarkerKey(customer.lead_status))}
                         anchor={{ x: 0.5, y: 1 }}
                         tracksViewChanges={false}
                         onPress={() => handleCustomerMarkerPress(customer)}
                         zIndex={1}
-                      />
+                      >
+                        <Image
+                          source={getMarkerIconSource(mapLeadStatusToMarkerKey(customer.lead_status))}
+                          style={{ width: 32, height: 40 }}
+                          resizeMode="contain"
+                        />
+                      </Marker>
                     ))
                   : null}
                 {/* Render polygons from NEXRAD data */}
@@ -1627,10 +1644,14 @@ const getPolygonCentroid = (coordinates = []) => {
                       latitude: pendingMarker.latitude,
                       longitude: pendingMarker.longitude,
                     }}
-                    image={getMarkerIconSource('default')}
                     anchor={{ x: 0.5, y: 1 }}
                     tracksViewChanges={false}
                   >
+                    <Image
+                      source={getMarkerIconSource('default')}
+                      style={{ width: 32, height: 40 }}
+                      resizeMode="contain"
+                    />
                     {Callout ? (
                       <Callout tooltip onPress={handleViewDetailsPress}>
                         <View style={styles.pendingCallout}>
@@ -1703,12 +1724,17 @@ const getPolygonCentroid = (coordinates = []) => {
                           customer.city ||
                           undefined
                         }
-                        image={getMarkerIconSource(mapLeadStatusToMarkerKey(customer.lead_status))}
                         anchor={{ x: 0.5, y: 1 }}
                         tracksViewChanges={false}
                         onPress={() => handleCustomerMarkerPress(customer)}
                         zIndex={1}
-                      />
+                      >
+                        <Image
+                          source={getMarkerIconSource(mapLeadStatusToMarkerKey(customer.lead_status))}
+                          style={{ width: 32, height: 40 }}
+                          resizeMode="contain"
+                        />
+                      </Marker>
                     ))
                   : null}
                 {/* Render polygons from NEXRAD data */}
@@ -1790,10 +1816,14 @@ const getPolygonCentroid = (coordinates = []) => {
                       latitude: pendingMarker.latitude,
                       longitude: pendingMarker.longitude,
                     }}
-                    image={getMarkerIconSource('default')}
                     anchor={{ x: 0.5, y: 1 }}
                     tracksViewChanges={false}
                   >
+                    <Image
+                      source={getMarkerIconSource('default')}
+                      style={{ width: 32, height: 40 }}
+                      resizeMode="contain"
+                    />
                     {Callout ? (
                       <Callout tooltip onPress={handleViewDetailsPress}>
                         <View style={styles.pendingCallout}>
@@ -1876,23 +1906,26 @@ const getPolygonCentroid = (coordinates = []) => {
                 )}
               </View>
               <View style={styles.mapTypeToggle}>
-                {['standard', 'satellite'].map((type) => (
+                {[
+                  { value: 'standard', label: 'Map' },
+                  { value: 'hybrid', label: 'Satellite' },
+                ].map(({ value, label }) => (
                   <TouchableOpacity
-                    key={type}
+                    key={value}
                     style={[
                       styles.mapTypeButton,
-                      mapType === type && styles.mapTypeButtonActive,
+                      mapType === value && styles.mapTypeButtonActive,
                     ]}
-                    onPress={() => setMapType(type)}
+                    onPress={() => setMapType(value)}
                     activeOpacity={0.85}
                   >
                     <Text
                       style={[
                         styles.mapTypeButtonText,
-                        mapType === type && styles.mapTypeButtonTextActive,
+                        mapType === value && styles.mapTypeButtonTextActive,
                       ]}
                     >
-                      {type === 'standard' ? 'Map' : 'Satellite'}
+                      {label}
                     </Text>
                   </TouchableOpacity>
                 ))}

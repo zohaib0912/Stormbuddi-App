@@ -11,6 +11,8 @@ import { colors } from '../theme/colors';
 const CustomerCard = ({ 
   customer,
   onPress,
+  onGenerateCredentials,
+  hasCredentialsGenerated,
   style 
 }) => {
   const formatDate = (dateString) => {
@@ -118,16 +120,30 @@ const CustomerCard = ({
         {/* Header with customer name */}
         <View style={styles.header}>
           <Text style={styles.customerName}>{getCustomerName()}</Text>
-          <View style={[
-            styles.packageBadge,
-            { backgroundColor: getPackageColor(getSubscriptionPackage()) }
-          ]}>
-            <Text style={[
-              styles.packageText,
-              { color: getPackageTextColor(getSubscriptionPackage()) }
+          <View style={styles.headerRight}>
+            {!hasCredentialsGenerated && onGenerateCredentials && (
+              <TouchableOpacity
+                style={styles.generateButton}
+                onPress={(e) => {
+                  e.stopPropagation(); // Prevent card press
+                  onGenerateCredentials(customer);
+                }}
+                activeOpacity={0.7}
+              >
+                <Icon name="vpn-key" size={18} color={colors.primary} />
+              </TouchableOpacity>
+            )}
+            <View style={[
+              styles.packageBadge,
+              { backgroundColor: getPackageColor(getSubscriptionPackage()) }
             ]}>
-              {getSubscriptionPackage()}
-            </Text>
+              <Text style={[
+                styles.packageText,
+                { color: getPackageTextColor(getSubscriptionPackage()) }
+              ]}>
+                {getSubscriptionPackage()}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -202,11 +218,23 @@ const styles = StyleSheet.create({
     color: colors.text,
     flex: 1,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  generateButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   packageBadge: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 12,
-    marginLeft: 8,
   },
   packageText: {
     fontSize: 11,

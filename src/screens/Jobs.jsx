@@ -15,7 +15,7 @@
  * - Data structure is already compatible with typical REST API responses
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -24,10 +24,12 @@ import {
   TouchableOpacity,
   TextInput,
   FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { colors } from '../theme/colors';
+import { dedupeById } from '../utils/dedupeById';
 
 // Import reusable components
 import Header from '../components/Header';
@@ -75,6 +77,26 @@ const mockJobs = [
   },
 ];
 
+const JOBS_PER_PAGE = 20;
+const JOBS_API = 'https://app.stormbuddi.com/api/mobile/jobs';
+
+function normalizeJobsPayload(data) {
+  if (!data?.success) {
+    return { rows: [], meta: {} };
+  }
+  const raw = data.data;
+  if (Array.isArray(raw)) {
+    return { rows: raw, meta: data.meta || {} };
+  }
+  if (raw && typeof raw === 'object' && Array.isArray(raw.data)) {
+    return {
+      rows: raw.data,
+      meta: { ...(typeof data.meta === 'object' && data.meta ? data.meta : {}), ...(raw.meta || {}) },
+    };
+  }
+  return { rows: [], meta: {} };
+}
+
 const Jobs = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const [jobs, setJobs] = useState([]);
@@ -84,60 +106,124 @@ const Jobs = ({ navigation }) => {
   const [showFilters, setShowFilters] = useState(false);
   const [showCreateJobModal, setShowCreateJobModal] = useState(false);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
-  
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMoreJobs, setHasMoreJobs] = useState(true);
+
+  const jobsPageRef = useRef(1);
+  const loadMoreLockRef = useRef(false);
+  const initialLoadDoneRef = useRef(false);
+  const hasMoreJobsRef = useRef(true);
+
   // Use the new page loader hook
   const { shouldShowLoader, startLoading, stopLoading } = usePageLoader(true);
 
-  // Fetch jobs from backend API
+  useEffect(() => {
+    hasMoreJobsRef.current = hasMoreJobs;
+  }, [hasMoreJobs]);
+
+  const fetchJobsPage = async (page, { append }) => {
+    const token = await getToken();
+    if (!token) {
+      throw new Error('No authentication token found. Please login again.');
+    }
+
+    const url = `${JOBS_API}?page=${page}&per_page=${JOBS_PER_PAGE}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error(data.message || 'Invalid jobs response');
+    }
+
+    const { rows, meta } = normalizeJobsPayload(data);
+    const uniqueRows = dedupeById(rows);
+
+    const hasMore =
+      meta.has_more === true
+        ? true
+        : meta.has_more === false
+          ? false
+          : uniqueRows.length >= JOBS_PER_PAGE;
+
+    if (append) {
+      setJobs((prev) => {
+        const seen = new Set(prev.map((j) => String(j.id)));
+        const merged = [...prev];
+        for (const j of uniqueRows) {
+          const key = String(j.id);
+          if (!seen.has(key)) {
+            seen.add(key);
+            merged.push(j);
+          }
+        }
+        return merged;
+      });
+    } else {
+      setJobs(uniqueRows);
+    }
+
+    jobsPageRef.current = page;
+    setHasMoreJobs(hasMore);
+    hasMoreJobsRef.current = hasMore;
+  };
+
   const fetchJobs = async () => {
+    initialLoadDoneRef.current = false;
+    loadMoreLockRef.current = false;
+    jobsPageRef.current = 1;
+    setHasMoreJobs(true);
+    hasMoreJobsRef.current = true;
     startLoading();
     setError(null);
 
     try {
-      // Get stored token
-      const token = await getToken();
-      
-      if (!token) {
-        throw new Error('No authentication token found. Please login again.');
-      }
-      
-      
-      const response = await fetch('https://app.stormbuddi.com/api/mobile/jobs', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      if (data.success && data.data) {
-        console.log('Jobs fetched successfully:', data.data);
-        
-        // Debug: Log unique status values from API
-        const uniqueStatuses = [...new Set(data.data.map(job => job.status))];
-        console.log('Unique status values from API:', uniqueStatuses);
-        
-        setJobs(data.data);
-      } else {
-        // Fallback to mock data if API structure is different
-        console.log('API response structure different, using mock data');
-        setJobs(mockJobs);
-      }
+      await fetchJobsPage(1, { append: false });
+      initialLoadDoneRef.current = true;
     } catch (err) {
       console.error('Jobs fetch error:', err);
       setError('Failed to load jobs. Using offline data.');
-      // Fallback to mock data on error
       setJobs(mockJobs);
+      setHasMoreJobs(false);
+      hasMoreJobsRef.current = false;
     } finally {
       stopLoading();
+    }
+  };
+
+  const loadMoreJobs = async () => {
+    if (
+      !initialLoadDoneRef.current ||
+      loadMoreLockRef.current ||
+      !hasMoreJobsRef.current ||
+      loadingMore
+    ) {
+      return;
+    }
+    loadMoreLockRef.current = true;
+    setLoadingMore(true);
+    const nextPage = jobsPageRef.current + 1;
+    try {
+      await fetchJobsPage(nextPage, { append: true });
+    } catch (err) {
+      console.error('Jobs load more error:', err);
+      setHasMoreJobs(false);
+      hasMoreJobsRef.current = false;
+    } finally {
+      loadMoreLockRef.current = false;
+      setLoadingMore(false);
     }
   };
 
@@ -201,7 +287,7 @@ const Jobs = ({ navigation }) => {
   };
 
   const handleCreateJobSubmit = (jobData) => {
-    console.log('Job created:', jobData);
+    
     
     // Refresh the jobs list to show the newly created job
     fetchJobs();
@@ -241,13 +327,6 @@ const Jobs = ({ navigation }) => {
 
   // Render function for FlatList
   const renderJobItem = ({ item: job }) => {
-    // Debug logging to check data
-    console.log('Job data for card:', {
-      title: job.title,
-      assigned_to: job.assigned_to,
-      assignedTo: job.assigned_to || 'Unassigned'
-    });
-    
     return (
       <JobCard
         title={job.title}
@@ -263,7 +342,8 @@ const Jobs = ({ navigation }) => {
   };
 
   // Key extractor for FlatList
-  const keyExtractor = (item) => item.id.toString();
+  const keyExtractor = (item, index) =>
+    item.id != null ? String(item.id) : `job-${index}`;
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
@@ -297,8 +377,88 @@ const Jobs = ({ navigation }) => {
             onNotificationPress={handleNotificationPress}
           />
 
-          {/* Jobs List with Header */}
+          {/* Keep search/filters outside FlatList so typing does not remount the header (fixes one-letter-then-reset) */}
+          <View style={styles.listHeader}>
+            <View style={styles.titleContainer}>
+              <Text style={styles.screenTitle}>Jobs</Text>
+            </View>
+
+            <View style={styles.filtersContainer}>
+              <View style={styles.searchContainer}>
+                <Icon name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search jobs..."
+                  placeholderTextColor="#666"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+                <TouchableOpacity
+                  style={[
+                    styles.filterIcon,
+                    (showFilters || hasActiveFilters) && styles.filterIconActive,
+                  ]}
+                  onPress={toggleFilters}
+                >
+                  <Icon
+                    name="tune"
+                    size={20}
+                    color={(showFilters || hasActiveFilters) ? colors.primary : colors.textSecondary}
+                  />
+                  {hasActiveFilters && (
+                    <View style={styles.filterBadge}>
+                      <Text style={styles.filterBadgeText}>!</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              {showFilters && (
+                <View style={styles.filterRow}>
+                  <View style={styles.filterGroup}>
+                    <Text style={styles.filterLabel}>Status:</Text>
+                    <View style={styles.filterButtons}>
+                      {[
+                        { value: 'all', label: 'All' },
+                        { value: 'new-job', label: 'New Job' },
+                        { value: 'in-progress', label: 'In Progress' },
+                        { value: 'proposal-sent', label: 'Proposal Sent' },
+                        { value: 'proposal-signed', label: 'Proposal Signed' },
+                        { value: 'material-ordered', label: 'Material Ordered' },
+                        { value: 'work-order', label: 'Work Order' },
+                        { value: 'appointment-scheduled', label: 'Appointment Scheduled' },
+                        { value: 'invoicing-payment', label: 'Invoicing Payment' },
+                        { value: 'job-completed', label: 'Job Completed' },
+                        { value: 'lost', label: 'Lost' },
+                        { value: 'unqualified', label: 'Unqualified' },
+                      ].map((filter) => (
+                        <TouchableOpacity
+                          key={filter.value}
+                          style={[
+                            styles.filterButton,
+                            selectedStage === filter.value && styles.filterButtonActive,
+                          ]}
+                          onPress={() => setSelectedStage(filter.value)}
+                        >
+                          <Text
+                            style={[
+                              styles.filterButtonText,
+                              selectedStage === filter.value && styles.filterButtonTextActive,
+                            ]}
+                          >
+                            {filter.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                </View>
+              )}
+            </View>
+          </View>
+
           <FlatList
+          style={{ flex: 1 }}
           data={filteredJobs}
           renderItem={renderJobItem}
           keyExtractor={keyExtractor}
@@ -313,86 +473,6 @@ const Jobs = ({ navigation }) => {
             offset: 200 * index,
             index,
           })}
-          ListHeaderComponent={() => (
-            <View style={styles.listHeader}>
-              {/* Screen Title */}
-              <View style={styles.titleContainer}>
-                <Text style={styles.screenTitle}>Jobs</Text>
-              </View>
-
-              {/* Search and Filters */}
-              <View style={styles.filtersContainer}>
-                <View style={styles.searchContainer}>
-                  <Icon name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
-                  <TextInput
-                    style={styles.searchInput}
-                    placeholder="Search jobs..."
-                    placeholderTextColor="#666"
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                  />
-                  <TouchableOpacity 
-                    style={[
-                      styles.filterIcon,
-                      (showFilters || hasActiveFilters) && styles.filterIconActive
-                    ]} 
-                    onPress={toggleFilters}
-                  >
-                    <Icon 
-                      name="tune" 
-                      size={20} 
-                      color={(showFilters || hasActiveFilters) ? colors.primary : colors.textSecondary} 
-                    />
-                    {hasActiveFilters && (
-                      <View style={styles.filterBadge}>
-                        <Text style={styles.filterBadgeText}>!</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                </View>
-                
-                {showFilters && (
-                  <View style={styles.filterRow}>
-                    <View style={styles.filterGroup}>
-                      <Text style={styles.filterLabel}>Status:</Text>
-                      <View style={styles.filterButtons}>
-                        {[
-                          { value: 'all', label: 'All' },
-                          { value: 'new-job', label: 'New Job' },
-                          { value: 'in-progress', label: 'In Progress' },
-                          { value: 'proposal-sent', label: 'Proposal Sent' },
-                          { value: 'proposal-signed', label: 'Proposal Signed' },
-                          { value: 'material-ordered', label: 'Material Ordered' },
-                          { value: 'work-order', label: 'Work Order' },
-                          { value: 'appointment-scheduled', label: 'Appointment Scheduled' },
-                          { value: 'invoicing-payment', label: 'Invoicing Payment' },
-                          { value: 'job-completed', label: 'Job Completed' },
-                          { value: 'lost', label: 'Lost' },
-                          { value: 'unqualified', label: 'Unqualified' },
-                        ].map((filter) => (
-                          <TouchableOpacity
-                            key={filter.value}
-                            style={[
-                              styles.filterButton,
-                              selectedStage === filter.value && styles.filterButtonActive
-                            ]}
-                            onPress={() => setSelectedStage(filter.value)}
-                          >
-                            <Text style={[
-                              styles.filterButtonText,
-                              selectedStage === filter.value && styles.filterButtonTextActive
-                            ]}>
-                              {filter.label}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </View>
-                  </View>
-                )}
-              </View>
-            </View>
-          )}
           ListEmptyComponent={() => (
             <View style={styles.emptyState}>
               <Text style={styles.emptyStateText}>
@@ -409,6 +489,19 @@ const Jobs = ({ navigation }) => {
               </Text>
             </View>
           )}
+          onEndReached={() => {
+            if (hasMoreJobs && !loadingMore) {
+              loadMoreJobs();
+            }
+          }}
+          onEndReachedThreshold={0.35}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={styles.listFooterLoader}>
+                <ActivityIndicator size="small" color={colors.primary} />
+              </View>
+            ) : null
+          }
         />
 
         <FloatingActionButton
@@ -455,9 +548,14 @@ const styles = StyleSheet.create({
   },
   listHeader: {
     paddingBottom: 20,
+    paddingHorizontal: 16,
+  },
+  listFooterLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   titleContainer: {
-    marginHorizontal: 16,
     marginTop: 20,
     marginBottom: 20,
   },

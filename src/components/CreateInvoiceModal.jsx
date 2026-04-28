@@ -97,7 +97,7 @@ const CreateInvoiceModal = ({
       const data = await response.json();
       
       if (data.success && data.data) {
-        console.log('Jobs fetched for invoice:', data.data);
+        
         setJobs(data.data);
       }
     } catch (error) {
@@ -178,43 +178,34 @@ const CreateInvoiceModal = ({
   };
 
   const validateForm = () => {
-    console.log('=== FORM VALIDATION ===');
-    console.log('Validating form data:', formData);
+    
     
     const newErrors = {};
     
     if (formData.selectedJobs.length === 0) {
       newErrors.selectedJobs = 'Please select a job';
-      console.log('Validation error: No job selected');
     }
     
     if (!formData.createdDate.trim()) {
       newErrors.createdDate = 'Please select a date';
-      console.log('Validation error: No date selected');
     }
     
     if (!formData.createdTime.trim()) {
       newErrors.createdTime = 'Please select a time';
-      console.log('Validation error: No time selected');
+      
     }
     
-    console.log('Validation errors:', newErrors);
-    console.log('Form is valid:', Object.keys(newErrors).length === 0);
+   
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async () => {
-    console.log('🚀 CREATE INVOICE BUTTON PRESSED!');
-    console.log('=== INVOICE CREATION DEBUG ===');
-    console.log('Form data:', formData);
-    console.log('Selected jobs:', formData.selectedJobs);
-    console.log('Created date:', formData.createdDate);
-    console.log('Created time:', formData.createdTime);
+    
     
     if (!validateForm()) {
-      console.log('Form validation failed:', errors);
+      
       return;
     }
 
@@ -242,12 +233,7 @@ const CreateInvoiceModal = ({
         created_at: `${formData.createdDate} ${formData.createdTime}:00`, // Combined datetime
       };
 
-      console.log('Selected job:', formData.selectedJobs[0]);
-      console.log('Project ID being sent:', formData.selectedJobs[0]?.id);
-      console.log('Primary API data format:', apiData);
-      console.log('Alternative API data format:', alternativeApiData);
-      console.log('API endpoint: https://app.stormbuddi.com/api/mobile/invoices');
-
+      
       // Try primary format first
       let response = await fetch('https://app.stormbuddi.com/api/mobile/invoices', {
         method: 'POST',
@@ -260,11 +246,11 @@ const CreateInvoiceModal = ({
         body: JSON.stringify(apiData),
       });
 
-      console.log('Primary request - Response status:', response.status);
+      
 
       // If primary format fails, try alternative format
       if (!response.ok) {
-        console.log('Primary format failed, trying alternative format...');
+        
         const errorText = await response.text();
         console.error('Primary format error:', errorText);
         
@@ -279,11 +265,10 @@ const CreateInvoiceModal = ({
           body: JSON.stringify(alternativeApiData),
         });
         
-        console.log('Alternative request - Response status:', response.status);
+       
       }
 
-      console.log('Final response status:', response.status);
-      console.log('Response headers:', response.headers);
+      
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -292,10 +277,10 @@ const CreateInvoiceModal = ({
       }
 
       const data = await response.json();
-      console.log('API Response data:', data);
+      
       
       if (data.success) {
-        console.log('Invoice created successfully:', data);
+       
         showSuccess('Invoice created successfully!');
         onSubmit(formData);
         handleClose();
@@ -524,7 +509,7 @@ const CreateInvoiceModal = ({
                   loading && styles.submitButtonDisabled
                 ]}
                 onPress={() => {
-                  console.log('🔥 BUTTON PRESSED - TouchableOpacity working!');
+                  
                   handleSubmit();
                 }}
                 disabled={loading}

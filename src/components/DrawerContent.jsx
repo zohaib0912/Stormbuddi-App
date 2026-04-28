@@ -43,6 +43,7 @@ const DrawerContent = ({ navigation, state }) => {
     invoice_setting_view: ['Invoice'],
     schedules_view: ['Appointment'],
     profile_view: ['Profile'],
+    chat_view: ['ChatList'],
   };
 
   useEffect(() => {
@@ -204,7 +205,12 @@ const DrawerContent = ({ navigation, state }) => {
       icon: 'event',
       screen: 'Appointment',
     },
-  
+    {
+      key: 'ChatList',
+      label: 'CHAT',
+      icon: 'chat',
+      screen: 'ChatList',
+    },
     {
       key: 'Invoice',
       label: 'INVOICING & PAYMENTS',
@@ -237,12 +243,14 @@ const DrawerContent = ({ navigation, state }) => {
 
   const allowedScreens = getAllowedScreens(roles, permissions);
   const filteredNavigationItems = navigationItems.filter((item) => 
-    allowedScreens.includes(item.screen) || item.screen === 'Profile'
+    allowedScreens.includes(item.screen) || item.screen === 'Profile' || item.screen === 'ChatList'
   );
 
   const handleNavigation = (screen) => {
-    // Navigate to MainStack first, then to the specific screen
-    navigation.navigate('MainStack', { screen: screen });
+    if (typeof navigation.closeDrawer === 'function') {
+      navigation.closeDrawer();
+    }
+    navigation.navigate('MainStack', { screen });
   };
 
   const handleAction = (action) => {
@@ -268,7 +276,7 @@ const DrawerContent = ({ navigation, state }) => {
         // Remove FCM token from backend before clearing local data
         try {
           await FCMTokenService.removeFCMToken();
-          console.log('FCM token removed from backend');
+          
         } catch (error) {
           console.error('Failed to remove FCM token from backend:', error);
           // Don't fail logout if FCM token removal fails

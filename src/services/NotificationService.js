@@ -1,6 +1,22 @@
-import messaging from '@react-native-firebase/messaging';
+import {
+  getMessaging,
+  requestPermission,
+  AuthorizationStatus,
+  registerDeviceForRemoteMessages,
+  getToken as getMessagingToken,
+  setBackgroundMessageHandler,
+  onMessage,
+  onNotificationOpenedApp,
+  getInitialNotification,
+  subscribeToTopic,
+  unsubscribeFromTopic,
+} from '@react-native-firebase/messaging';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, Alert, PermissionsAndroid } from 'react-native';
 import FCMTokenService from './FCMTokenService';
+import { getToken as getAuthToken } from '../utils/tokenStorage';
+
+const LAST_SYNCED_FCM_MARKER_KEY = 'last_synced_fcm_marker';
 
 class NotificationService {
   constructor() {
@@ -35,14 +51,36 @@ class NotificationService {
 
   async storeFCMTokenInBackend(token) {
     try {
+      if (!token) {
+        return false;
+      }
+
+      const authToken = await getAuthToken();
+      if (!authToken) {
+        return false;
+      }
+
+      const syncMarker = JSON.stringify({
+        authToken,
+        fcmToken: token,
+      });
+      const lastMarker = await AsyncStorage.getItem(LAST_SYNCED_FCM_MARKER_KEY);
+
+      if (lastMarker === syncMarker) {
+        return true;
+      }
+
       const success = await FCMTokenService.updateFCMToken(token);
       if (success) {
+        await AsyncStorage.setItem(LAST_SYNCED_FCM_MARKER_KEY, syncMarker);
         console.log('FCM token stored in backend successfully');
       } else {
         console.log('Failed to store FCM token in backend (user might not be logged in)');
       }
+      return success;
     } catch (error) {
       console.error('Error storing FCM token in backend:', error);
+      return false;
     }
   }
 
@@ -77,12 +115,12 @@ class NotificationService {
 
     // iOS permission handling
     console.log('[NotificationService] Requesting iOS permission via Firebase messaging');
-    const authStatus = await messaging().requestPermission();
+    const authStatus = await requestPermission(getMessaging());
     console.log('[NotificationService] iOS permission status:', authStatus);
     
     const enabled =
-      authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
-      authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+      authStatus === AuthorizationStatus.AUTHORIZED ||
+      authStatus === AuthorizationStatus.PROVISIONAL;
 
     if (!enabled) {
       console.log('[NotificationService] Notification permission denied on iOS');
@@ -91,7 +129,7 @@ class NotificationService {
 
     // Register device for remote messages on iOS after permission is granted
     try {
-      await messaging().registerDeviceForRemoteMessages();
+      await registerDeviceForRemoteMessages(getMessaging());
       console.log('[NotificationService] Device registered for remote messages on iOS');
     } catch (error) {
       console.error('[NotificationService] Error registering device for remote messages:', error);
@@ -107,7 +145,7 @@ class NotificationService {
       if (Platform.OS === 'ios') {
         // Register device for remote messages (don't check permission first - try it)
         try {
-          await messaging().registerDeviceForRemoteMessages();
+          await registerDeviceForRemoteMessages(getMessaging());
           console.log('[NotificationService] Device registered for remote messages before getting token');
           // Small delay to ensure registration completes
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -122,7 +160,7 @@ class NotificationService {
         }
       }
       
-      const token = await messaging().getToken();
+      const token = await getMessagingToken(getMessaging());
       return token;
     } catch (error) {
       console.error('Error getting FCM token:', error);
@@ -136,12 +174,12 @@ class NotificationService {
 
   setupMessageHandlers() {
     // Handle background messages
-    messaging().setBackgroundMessageHandler(async (remoteMessage) => {
+    setBackgroundMessageHandler(getMessaging(), async (remoteMessage) => {
       console.log('Message handled in the background!', remoteMessage);
     });
 
     // Handle foreground messages
-    const unsubscribe = messaging().onMessage(async (remoteMessage) => {
+    const unsubscribe = onMessage(getMessaging(), async (remoteMessage) => {
       console.log('A new FCM message arrived!', remoteMessage);
       
       // Show alert for foreground messages
@@ -155,20 +193,18 @@ class NotificationService {
     });
 
     // Handle notification tap when app is in background/quit
-    messaging().onNotificationOpenedApp(remoteMessage => {
+    onNotificationOpenedApp(getMessaging(), remoteMessage => {
       console.log('Notification caused app to open from background state:', remoteMessage);
       this.handleNotificationTap(remoteMessage);
     });
 
     // Handle notification tap when app is quit
-    messaging()
-      .getInitialNotification()
-      .then(remoteMessage => {
-        if (remoteMessage) {
-          console.log('Notification caused app to open from quit state:', remoteMessage);
-          this.handleNotificationTap(remoteMessage);
-        }
-      });
+    getInitialNotification(getMessaging()).then(remoteMessage => {
+      if (remoteMessage) {
+        console.log('Notification caused app to open from quit state:', remoteMessage);
+        this.handleNotificationTap(remoteMessage);
+      }
+    });
 
     return unsubscribe;
   }
@@ -210,7 +246,7 @@ class NotificationService {
   // Method to subscribe to topics
   async subscribeToTopic(topic) {
     try {
-      await messaging().subscribeToTopic(topic);
+      await subscribeToTopic(getMessaging(), topic);
       console.log(`Subscribed to topic: ${topic}`);
     } catch (error) {
       console.error('Error subscribing to topic:', error);
@@ -220,7 +256,7 @@ class NotificationService {
   // Method to unsubscribe from topics
   async unsubscribeFromTopic(topic) {
     try {
-      await messaging().unsubscribeFromTopic(topic);
+      await unsubscribeFromTopic(getMessaging(), topic);
       console.log(`Unsubscribed from topic: ${topic}`);
     } catch (error) {
       console.error('Error unsubscribing from topic:', error);

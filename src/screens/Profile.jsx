@@ -56,7 +56,7 @@ const Profile = ({ navigation }) => {
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   
   // Use the new page loader hook - start with false, only show when screen is focused
-  const { shouldShowLoader, startLoading, stopLoading, resetLoader } = usePageLoader(false);
+  const { shouldShowLoader, startLoading, stopLoading, resetLoader } = usePageLoader(true);
 
   const { uploading: avatarUploading, error: avatarError, uploadedUrl, pickAndUpload, upload, selected } = useAvatarUpload({
     onUploaded: (url) => {
@@ -109,7 +109,7 @@ const Profile = ({ navigation }) => {
       const data = await response.json();
       
       if (data.success && data.data) {
-        console.log('Profile fetched successfully:', data.data);
+        
         
         // Map API response to form data
         const profileData = data.data;
@@ -133,7 +133,7 @@ const Profile = ({ navigation }) => {
           setAvatarUrl(profileData.avatar_url || profileData.avatar);
         }
       } else {
-        console.log('API response structure different, using empty form');
+        
       }
     } catch (err) {
       console.error('Profile fetch error:', err);
@@ -141,7 +141,7 @@ const Profile = ({ navigation }) => {
       // Handle different error types
       if (err.message.includes('404')) {
         setError('Profile API endpoint not found. Using default form.');
-        console.log('Profile API not implemented yet, using empty form');
+       
       } else if (err.message.includes('500')) {
         setError('Server error. Please try again later.');
       } else {
@@ -276,7 +276,7 @@ const Profile = ({ navigation }) => {
         updateData.password = formData.password;
       }
 
-      console.log('Sending profile update data:', updateData);
+      
 
       const response = await fetch('https://app.stormbuddi.com/api/mobile/profile', {
         method: 'PUT',

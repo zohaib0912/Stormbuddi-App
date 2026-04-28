@@ -221,7 +221,7 @@ const InspectionReportCard = ({
       
       showSuccess(`${fileName} downloaded successfully!\nSaved to: ${locationMessage}`);
       
-      console.log('File downloaded successfully:', filePath, 'Size:', fileStat.size, 'bytes');
+      
     } catch (error) {
       console.error('Download error:', error);
       showError(`Download failed: ${error.message || 'Unable to download file'}`);

@@ -82,7 +82,7 @@ const Appointment = ({ navigation }) => {
   const calendarStripRef = useRef(null);
   
   // Use the new page loader hook - start with false, only show when screen is focused
-  const { shouldShowLoader, startLoading, stopLoading, resetLoader } = usePageLoader(false);
+  const { shouldShowLoader, startLoading, stopLoading, resetLoader } = usePageLoader(true);
 
   // Fetch appointments from backend API
   const fetchAppointments = async () => {
@@ -114,7 +114,7 @@ const Appointment = ({ navigation }) => {
       const data = await response.json();
       
       if (data.success && data.data) {
-        console.log('Appointments fetched successfully:', data.data);
+        
         
         // Map API response to match AppointmentCard expected format
         const mappedAppointments = data.data.map(appointment => ({
@@ -194,8 +194,11 @@ const Appointment = ({ navigation }) => {
   };
 
   const handleModalSubmit = (formData) => {
-    // Refresh the appointments list to show the newly created or updated appointment
-    fetchAppointments();
+    // Add a small delay to ensure the API has saved the appointment
+    // before fetching the updated list
+    setTimeout(() => {
+      fetchAppointments();
+    }, 500);
   };
 
   const handleNotificationPress = () => {
@@ -227,14 +230,29 @@ const Appointment = ({ navigation }) => {
   // Only show present and future appointments, exclude past appointments
   const filteredAppointments = selectedDate 
     ? appointments.filter(appointment => {
-        const appointmentDate = new Date(appointment.date);
-        return appointmentDate.toDateString() === selectedDate.toDateString();
+        // Parse date as local date (not UTC) to avoid timezone issues
+        const appointmentDateStr = appointment.date; // Format: YYYY-MM-DD
+        const [year, month, day] = appointmentDateStr.split('-').map(Number);
+        const appointmentDate = new Date(year, month - 1, day); // month is 0-indexed
+        appointmentDate.setHours(0, 0, 0, 0);
+        
+        const selectedDateCopy = new Date(selectedDate);
+        selectedDateCopy.setHours(0, 0, 0, 0);
+        
+        return appointmentDate.getTime() === selectedDateCopy.getTime();
       })
     : appointments.filter(appointment => {
-        const appointmentDate = new Date(appointment.date);
+        // Parse date as local date (not UTC) to avoid timezone issues
+        const appointmentDateStr = appointment.date; // Format: YYYY-MM-DD
+        const [year, month, day] = appointmentDateStr.split('-').map(Number);
+        const appointmentDate = new Date(year, month - 1, day); // month is 0-indexed
+        appointmentDate.setHours(0, 0, 0, 0);
+        
         const today = new Date();
         today.setHours(0, 0, 0, 0); // Reset time to start of day for accurate comparison
-        return appointmentDate >= today; // Only show today and future appointments
+        
+        // Include today and future appointments
+        return appointmentDate.getTime() >= today.getTime();
       });
 
   return (

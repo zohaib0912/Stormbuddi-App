@@ -250,11 +250,11 @@ const CreateAppointmentModal = ({
       const data = await response.json();
       
       if (data.success && data.data) {
-        console.log('Jobs fetched for project selection. Count:', data.data.length);
-        console.log('First few jobs:', data.data.slice(0, 3).map(j => ({ id: j.id, title: j.title, address: j.address })));
+
+          
         setJobs(data.data);
       } else {
-        console.log('Failed to fetch jobs:', data);
+        
       }
     } catch (error) {
       console.error('Jobs fetch error:', error);
@@ -265,7 +265,7 @@ const CreateAppointmentModal = ({
 
   useEffect(() => {
     if (visible) {
-      console.log('Fetching jobs for appointment modal...');
+     
       fetchJobs();
     }
   }, [visible, fetchJobs]);
@@ -273,14 +273,13 @@ const CreateAppointmentModal = ({
   // Pre-select project when jobs are loaded and projectId prop is provided (for new appointments)
   useEffect(() => {
     if (!appointment && visible && projectId && jobs.length > 0) {
-      console.log('Pre-selecting project from prop:', projectId);
-      console.log('Available jobs:', jobs.map(j => ({ id: j.id, title: j.title })));
+      
       
       // Find the job matching the projectId
       const matchingJob = jobs.find(job => job.id === projectId || String(job.id) === String(projectId));
       
       if (matchingJob) {
-        console.log('Found matching job:', matchingJob);
+       
         setSelectedProjectId(projectId);
         
         // Also populate form data with job information
@@ -293,7 +292,7 @@ const CreateAppointmentModal = ({
           phone: matchingJob.client_phone || prev.phone,
         }));
       } else {
-        console.log('No matching job found for projectId:', projectId);
+       
       }
     }
   }, [projectId, jobs, visible, appointment]);
@@ -305,32 +304,11 @@ const CreateAppointmentModal = ({
       return;
     }
 
-    console.log('Project population useEffect triggered:', {
-      appointment: !!appointment,
-      visible,
-      jobsLength: jobs.length,
-      selectedProjectId,
-      appointmentProjectId: appointment?.project_id,
-      appointmentJobId: appointment?.job_id,
-      appointmentClientId: appointment?.client_id,
-      appointmentCustomerId: appointment?.customer_id,
-      allAppointmentKeys: appointment ? Object.keys(appointment) : []
-    });
+    
     
     // Debug: Show all appointment data to find the correct project field
-    console.log('Full appointment data:', appointment);
-    console.log('Looking for project-related fields:', {
-      project_id: appointment.project_id,
-      job_id: appointment.job_id,
-      client_id: appointment.client_id,
-      customer_id: appointment.customer_id,
-      project: appointment.project,
-      job: appointment.job,
-      client: appointment.client,
-      customer: appointment.customer,
-      roofr_id: appointment.roofr_id,
-      lead_id: appointment.lead_id
-    });
+    
+   
     
     // Proceed with project population
     // Try multiple possible project ID field names
@@ -346,25 +324,14 @@ const CreateAppointmentModal = ({
                        (appointment.client && appointment.client.id) ||
                        (appointment.customer && appointment.customer.id);
     
-    console.log('==== PROJECT LOOKUP DEBUG ====');
-    console.log('Looking for project with ID:', projectId);
-    console.log('Available jobs:', jobs.map(j => ({ id: j.id, title: j.title })));
-    console.log('Appointment data:', appointment);
+    
       
       if (projectId) {
         const selectedJob = jobs.find(job => job.id === projectId);
-        console.log('Found selected job:', selectedJob);
+        
         
         if (selectedJob) {
-          console.log('Updating form data with project info:', {
-            address: selectedJob.address,
-            client_name: selectedJob.client_name,
-            client_zip: selectedJob.client_zip,
-            client_zip_code: selectedJob.client_zip_code,
-            zip_code: selectedJob.zip_code,
-            postal_code: selectedJob.postal_code,
-            client_phone: selectedJob.client_phone
-          });
+          
           
           setFormData(prev => ({
             ...prev,
@@ -380,8 +347,7 @@ const CreateAppointmentModal = ({
             setSelectedProjectId(projectId);
           }
         } else {
-          console.log('No job found with ID:', projectId);
-          console.log('Available job IDs:', jobs.map(job => job.id));
+          
           
           // If no job found but appointment has client data, use appointment's data directly
           if (appointment.client_name || appointment.client_phone || appointment.location) {
@@ -394,13 +360,7 @@ const CreateAppointmentModal = ({
             
             const extractedZip = extractZipFromLocation(appointment.location);
             
-            console.log('Using appointment client data directly:', {
-              client_zip: appointment.client_zip,
-              client_name: appointment.client_name,
-              client_phone: appointment.client_phone,
-              location: appointment.location,
-              extracted_zip: extractedZip
-            });
+           
             
             setFormData(prev => ({
               ...prev,
@@ -420,7 +380,7 @@ const CreateAppointmentModal = ({
       }
     
     if (!projectId) {
-      console.log('No project ID found in appointment data - this appointment was created without a project');
+     
       
       // Even without a project, try to populate form data from appointment's client data
       if (appointment.client_name || appointment.client_phone || appointment.location) {
@@ -433,13 +393,7 @@ const CreateAppointmentModal = ({
         
         const extractedZip = extractZipFromLocation(appointment.location);
         
-        console.log('Populating form data from appointment without project:', {
-          client_zip: appointment.client_zip,
-          client_name: appointment.client_name,
-          client_phone: appointment.client_phone,
-          location: appointment.location,
-          extracted_zip: extractedZip
-        });
+        
         
         setFormData(prev => ({
           ...prev,
@@ -499,28 +453,21 @@ const CreateAppointmentModal = ({
   };
 
   const handleStatusSelect = (status) => {
-    console.log('Status selected:', status);
+    
     setFormData(prev => {
       const newFormData = {
         ...prev,
         status: status
       };
-      console.log('New form data with status:', newFormData);
+      
       return newFormData;
     });
     setShowStatusDropdown(false);
-    console.log('Status updated in form data');
+    
   };
 
   const handleProjectSelect = (job) => {
-    console.log('Selected project data:', job);
-    console.log('All available fields:', Object.keys(job));
-    console.log('Looking for zip code fields:', {
-      client_zip_code: job.client_zip_code,
-      zip_code: job.zip_code,
-      client_zip: job.client_zip,
-      postal_code: job.postal_code
-    });
+    
     
     setFormData(prev => ({
       ...prev,
@@ -570,7 +517,7 @@ const CreateAppointmentModal = ({
   // Helper function to safely parse time strings
   const parseTimeString = (timeString) => {
     try {
-      console.log('parseTimeString input:', timeString);
+      
       
       // Handle "11:00 AM" format
       const trimmedTime = timeString.trim();
@@ -599,7 +546,7 @@ const CreateAppointmentModal = ({
         }
       }
       
-      console.log('Parsed time:', time, 'period:', period);
+      
       
       const [hours, minutes] = time.split(':');
       
@@ -625,7 +572,7 @@ const CreateAppointmentModal = ({
       const today = new Date();
       const result = new Date(today.getFullYear(), today.getMonth(), today.getDate(), hour24, mins);
       
-      console.log('parseTimeString result:', result);
+      
       return result;
     } catch (error) {
       console.error('Error parsing time:', timeString, error);
@@ -659,7 +606,7 @@ const CreateAppointmentModal = ({
         
         // If start date is selected and we have a start time, recalculate end date/time
         if (dateType === 'startDate' && prev.startTime) {
-          console.log('Recalculating end time from start time:', prev.startTime);
+          
           const { endTime, crossesMidnight } = calculateEndTimeWithDate(prev.startTime);
           newFormData.endTime = endTime;
           
@@ -702,7 +649,7 @@ const CreateAppointmentModal = ({
         
         // If start time is selected, automatically set end time to 3 hours later
         if (timeType === 'startTime') {
-          console.log('Setting end time from start time:', formattedTime);
+          
           const { endTime, crossesMidnight } = calculateEndTimeWithDate(formattedTime);
           newFormData.endTime = endTime;
           
@@ -734,7 +681,7 @@ const CreateAppointmentModal = ({
   // Helper function to calculate end time with date handling (3 hours after start time)
   const calculateEndTimeWithDate = (startTime) => {
     try {
-      console.log('calculateEndTimeWithDate input:', startTime);
+      
       
       // Parse the start time (format: "9:00 AM" or "2:30 PM")
       const trimmedTime = startTime.trim();
@@ -763,7 +710,7 @@ const CreateAppointmentModal = ({
         }
       }
       
-      console.log('Parsed time:', time, 'period:', period);
+      
       
       const [hours, minutes] = time.split(':');
       
@@ -777,12 +724,11 @@ const CreateAppointmentModal = ({
         hour24 = 0;
       }
       
-      console.log('Converted to 24-hour:', hour24);
+
       
       // Add 3 hours
       hour24 += 3;
       
-      console.log('After adding 3 hours:', hour24);
       
       // Check if it crosses midnight
       const crossesMidnight = hour24 >= 24;
@@ -792,7 +738,6 @@ const CreateAppointmentModal = ({
         hour24 -= 24;
       }
       
-      console.log('Final 24-hour:', hour24);
       
       // Convert back to 12-hour format
       let endHour = hour24;
@@ -814,7 +759,6 @@ const CreateAppointmentModal = ({
       
       const endTime = `${endHour}:${mins.toString().padStart(2, '0')} ${endPeriod}`;
       
-      console.log('Final end time:', endTime, 'crossesMidnight:', crossesMidnight);
       
       return { endTime, crossesMidnight };
     } catch (error) {
@@ -936,6 +880,14 @@ const CreateAppointmentModal = ({
     return Object.keys(newErrors).length === 0;
   };
 
+  // Function to send appointment email - REMOVED: Backend sends email automatically on create/update
+  // This function is no longer needed as the backend handles email sending automatically
+  /*
+  const sendAppointmentEmail = async (appointmentId) => {
+    // Removed to prevent duplicate emails - backend sends email automatically
+  };
+  */
+
   const handleSubmit = async () => {
     if (!validateForm()) {
       return;
@@ -949,7 +901,6 @@ const CreateAppointmentModal = ({
     try {
       // Get stored token
       const token = await getToken();
-      console.log('CreateAppointmentModal: Token:', token ? 'Present' : 'Missing');
       
       if (!token) {
         throw new Error('No authentication token found. Please login again.');
@@ -968,16 +919,7 @@ const CreateAppointmentModal = ({
                                           (appointment.client && appointment.client.id) ||
                                           (appointment.customer && appointment.customer.id)));
       
-      console.log('Project validation:', {
-        selectedProjectId,
-        appointmentProjectId: appointment?.project_id,
-        appointmentJobId: appointment?.job_id,
-        appointmentClientId: appointment?.client_id,
-        appointmentCustomerId: appointment?.customer_id,
-        projectIdToUse,
-        isEditing: isEditing
-      });
-      
+     
       // Only require project for new appointments or if explicitly selected
       if (!projectIdToUse && !appointment) {
         setLoading(false);
@@ -987,27 +929,20 @@ const CreateAppointmentModal = ({
       
       // For existing appointments without projects, allow updating without project
       if (!projectIdToUse && appointment) {
-        console.log('Editing appointment without project - allowing update');
       }
 
-      console.log('CreateAppointmentModal: isEditing:', isEditing);
-      console.log('CreateAppointmentModal: appointment:', appointment);
-      console.log('CreateAppointmentModal: appointment.id:', appointment?.id);
 
       // Convert form data to API format - match backend structure exactly
       const formatDateForAPI = (dateStr) => {
         try {
-          console.log('formatDateForAPI input:', dateStr);
       
           if (!dateStr) {
-            console.log('No date provided, using current date');
             const today = new Date();
             return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
           }
       
           // Already in YYYY-MM-DD format
           if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-            console.log('Date already in YYYY-MM-DD format');
             return dateStr;
           }
       
@@ -1015,7 +950,6 @@ const CreateAppointmentModal = ({
       
           // Parse MM/DD/YYYY format
           if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateStr)) {
-            console.log('Parsing MM/DD/YYYY format');
             [month, day, year] = dateStr.split('/').map(v => v.trim());
             
             // Ensure year is 4 digits (handle 2-digit years)
@@ -1035,14 +969,12 @@ const CreateAppointmentModal = ({
       
           // ✅ Use local date parts (no UTC conversion)
           const formatted = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-          console.log('Formatted date (fixed):', formatted);
           return formatted;
       
         } catch (error) {
           console.error('Date formatting error:', error, 'Input:', dateStr);
           const fallback = new Date();
           const fallbackFormatted = `${fallback.getFullYear()}-${String(fallback.getMonth() + 1).padStart(2, "0")}-${String(fallback.getDate()).padStart(2, "0")}`;
-          console.log('Using fallback date:', fallbackFormatted);
           return fallbackFormatted;
         }
       };
@@ -1050,8 +982,7 @@ const CreateAppointmentModal = ({
 
       const formatTimeForAPI = (timeStr) => {
         try {
-          console.log('formatTimeForAPI input:', timeStr);
-          
+
           // Convert "11:00 AM" to "11:00:00" (24-hour format)
           const trimmedTime = timeStr.trim();
           
@@ -1079,7 +1010,7 @@ const CreateAppointmentModal = ({
             }
           }
           
-          console.log('Parsed time:', time, 'period:', period);
+          
           
           const [hours, minutes] = time.split(':');
           
@@ -1101,7 +1032,7 @@ const CreateAppointmentModal = ({
           }
           
           const result = `${hour24.toString().padStart(2, '0')}:${minutes}:00`;
-          console.log('formatTimeForAPI result:', result);
+          
           return result;
         } catch (error) {
           console.error('Time formatting error:', error, 'Input:', timeStr);
@@ -1111,19 +1042,14 @@ const CreateAppointmentModal = ({
         }
       };
 
-      console.log('Form data:', formData);
-      console.log('Start date:', formData.startDate, 'Start time:', formData.startTime);
-      console.log('End date:', formData.endDate, 'End time:', formData.endTime);
+      
       
       const formattedStartDate = formatDateForAPI(formData.startDate);
       const formattedEndDate = formatDateForAPI(formData.endDate);
       const formattedStartTime = formatTimeForAPI(formData.startTime);
       const formattedEndTime = formatTimeForAPI(formData.endTime);
       
-      console.log('Formatted start date:', formattedStartDate);
-      console.log('Formatted end date:', formattedEndDate);
-      console.log('Formatted start time:', formattedStartTime);
-      console.log('Formatted end time:', formattedEndTime);
+      
       
       // Validate formatted strings are not empty
       if (!formattedStartDate || !formattedStartTime || !formattedEndDate || !formattedEndTime) {
@@ -1149,9 +1075,7 @@ const CreateAppointmentModal = ({
         return;
       }
       
-      console.log('Start DateTime:', startDateTime.toISOString());
-      console.log('End DateTime:', endDateTime.toISOString());
-      console.log('End is after start:', endDateTime > startDateTime);
+    
       
       if (endDateTime <= startDateTime) {
         setLoading(false);
@@ -1159,13 +1083,11 @@ const CreateAppointmentModal = ({
         return;
       }
       
-      console.log('Available status options:', statusOptions);
-      console.log('Selected status:', formData.status);
-      console.log('Status being sent:', formData.status || 'Pending');
+     
 
       // Validate status value
       const validStatus = statusOptions.includes(formData.status) ? formData.status : 'Pending';
-      console.log('Validated status:', validStatus);
+      
 
       // Try including roofr_id to match what backend expects
       // Force type to "inspection" if forceInspectionType is true and creating new appointment
@@ -1181,13 +1103,7 @@ const CreateAppointmentModal = ({
         return;
       }
       
-      console.log('Creating appointment with type:', {
-        forceInspectionType,
-        isEditing: !!appointment,
-        formDataRequestType: formData.requestType,
-        appointmentType: appointmentType,
-        appointmentTypeLength: appointmentType.length
-      });
+     
       
       const apiData = {
         title: formData.requestTitle.trim(),
@@ -1204,7 +1120,7 @@ const CreateAppointmentModal = ({
         apiData.project_id = projectIdToUse;
       }
 
-      console.log(isEditing ? 'Updating appointment data:' : 'Creating appointment data:', apiData);
+      
 
       // Use PUT method for editing (backend only supports GET, HEAD, PUT)
       const url = isEditing 
@@ -1233,7 +1149,11 @@ const CreateAppointmentModal = ({
       const data = await response.json();
       
       if (data.success) {
-        console.log(isEditing ? 'Appointment updated successfully:' : 'Appointment created successfully:', data);
+        
+        
+        // Backend automatically sends email on create/update, so no need to call send-email endpoint
+        // Removed manual email sending to prevent duplicate emails
+        
         showSuccess(isEditing ? 'Appointment updated successfully!' : 'Appointment created successfully!');
         onSubmit();
         handleClose();
@@ -1586,7 +1506,7 @@ const CreateAppointmentModal = ({
                             key={index}
                             style={styles.dropdownItem}
                             onPress={() => {
-                              console.log('Dropdown option clicked:', option);
+                              
                               handleStatusSelect(option);
                             }}
                           >

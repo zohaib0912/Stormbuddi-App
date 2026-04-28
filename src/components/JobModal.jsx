@@ -233,9 +233,9 @@ const JobModal = ({
 
       const data = await response.json();
 
-      console.log('Job created successfully:', data);
+      
       if (data.success) {
-        console.log('Job created successfully:', data);
+        
         
         // Show success message
         showSuccess('Job created successfully!');

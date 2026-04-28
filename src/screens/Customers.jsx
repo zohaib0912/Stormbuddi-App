@@ -5,16 +5,15 @@
  * and provides functionality to create new customers via a modal.
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
   StyleSheet,
   StatusBar,
-  ScrollView,
-  TouchableOpacity,
   FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -31,10 +30,51 @@ import NotificationListModal from '../components/NotificationListModal';
 import SearchBar from '../components/SearchBar';
 import { getToken } from '../utils/tokenStorage';
 import usePageLoader from '../hooks/usePageLoader';
+import { useToast } from '../contexts/ToastContext';
 import { colors } from '../theme/colors';
+import { dedupeById } from '../utils/dedupeById';
+
+const CUSTOMERS_PER_PAGE = 20;
+const CLIENTS_API = 'https://app.stormbuddi.com/api/mobile/clients';
+
+function normalizeClientsPayload(data) {
+  if (Array.isArray(data)) {
+    return { rows: data, meta: {} };
+  }
+  if (!data?.success) {
+    return { rows: [], meta: {} };
+  }
+  const metaRoot = typeof data.meta === 'object' && data.meta ? data.meta : {};
+  const raw = data.data;
+  if (Array.isArray(raw)) {
+    return { rows: raw, meta: metaRoot };
+  }
+  if (raw && typeof raw === 'object' && Array.isArray(raw.data)) {
+    return {
+      rows: raw.data,
+      meta: { ...metaRoot, ...(raw.meta || {}) },
+    };
+  }
+  if (Array.isArray(data.clients)) {
+    return { rows: data.clients, meta: metaRoot };
+  }
+  if (Array.isArray(data.customers)) {
+    return { rows: data.customers, meta: metaRoot };
+  }
+  return { rows: [], meta: metaRoot };
+}
+
+function sortCustomersByCreatedDesc(list) {
+  return [...list].sort((a, b) => {
+    const dateA = new Date(a.created_at || a.createdAt || a.CreatedAt || 0);
+    const dateB = new Date(b.created_at || b.createdAt || b.CreatedAt || 0);
+    return dateB.getTime() - dateA.getTime();
+  });
+}
 
 const Customers = ({ navigation }) => {
   const insets = useSafeAreaInsets();
+  const { showSuccess, showError } = useToast();
   const [customers, setCustomers] = useState([]);
   const [filteredCustomers, setFilteredCustomers] = useState([]);
   const [error, setError] = useState(null);
@@ -43,77 +83,128 @@ const Customers = ({ navigation }) => {
   const [showCustomerDetailsModal, setShowCustomerDetailsModal] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
-  
-  // Use the page loader hook - start with false, only show when screen is focused
-  const { shouldShowLoader, startLoading, stopLoading, resetLoader } = usePageLoader(false);
+  // Track which customers have credentials generated (one-time use)
+  const [credentialsGenerated, setCredentialsGenerated] = useState(new Set());
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMoreCustomers, setHasMoreCustomers] = useState(true);
 
-  // Fetch customers from backend API
+  const customersPageRef = useRef(1);
+  const loadMoreLockRef = useRef(false);
+  const initialLoadDoneRef = useRef(false);
+  const hasMoreCustomersRef = useRef(true);
+
+  // Use the page loader hook - start with false, only show when screen is focused
+  const { shouldShowLoader, startLoading, stopLoading, resetLoader } = usePageLoader(true);
+
+  useEffect(() => {
+    hasMoreCustomersRef.current = hasMoreCustomers;
+  }, [hasMoreCustomers]);
+
+  const fetchCustomersPage = async (page, { append }) => {
+    const token = await getToken();
+    if (!token) {
+      throw new Error('No authentication token found. Please login again.');
+    }
+
+    const url = `${CLIENTS_API}?page=${page}&per_page=${CUSTOMERS_PER_PAGE}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (!data.success && !Array.isArray(data)) {
+      throw new Error(data.message || 'Failed to fetch customers - invalid response format');
+    }
+
+    const { rows, meta } = normalizeClientsPayload(data);
+
+    const hasMore =
+      meta.has_more === true
+        ? true
+        : meta.has_more === false
+          ? false
+          : rows.length >= CUSTOMERS_PER_PAGE;
+
+    const sortedRows = sortCustomersByCreatedDesc(dedupeById(rows));
+
+    if (append) {
+      setCustomers((prev) => {
+        const seen = new Set(prev.map((c) => String(c.id)));
+        const merged = [...prev];
+        for (const c of sortedRows) {
+          const key = String(c.id);
+          if (!seen.has(key)) {
+            seen.add(key);
+            merged.push(c);
+          }
+        }
+        return sortCustomersByCreatedDesc(merged);
+      });
+    } else {
+      setCustomers(sortedRows);
+    }
+
+    customersPageRef.current = page;
+    setHasMoreCustomers(hasMore);
+    hasMoreCustomersRef.current = hasMore;
+  };
+
   const fetchCustomers = async () => {
+    initialLoadDoneRef.current = false;
+    loadMoreLockRef.current = false;
+    customersPageRef.current = 1;
+    setHasMoreCustomers(true);
+    hasMoreCustomersRef.current = true;
     startLoading();
     setError(null);
-    
+
     try {
-      // Get stored token
-      const token = await getToken();
-      
-      if (!token) {
-        throw new Error('No authentication token found. Please login again.');
-      }
-      
-      const response = await fetch('https://app.stormbuddi.com/api/mobile/clients', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      // Try different possible response structures (same as ClientSelectionModal)
-      let customersList = [];
-      
-      if (data.success) {
-        if (data.data) {
-          customersList = data.data;
-        } else if (data.clients) {
-          customersList = data.clients;
-        } else if (data.customers) {
-          customersList = data.customers;
-        } else if (Array.isArray(data)) {
-          customersList = data;
-        }
-      } else if (Array.isArray(data)) {
-        customersList = data;
-      }
-      
-      if (Array.isArray(customersList)) {
-        console.log('Customers fetched successfully:', customersList);
-        
-        // Sort customers by creation date (newest first)
-        const sortedCustomers = customersList.sort((a, b) => {
-          const dateA = new Date(a.created_at || a.createdAt || a.CreatedAt || 0);
-          const dateB = new Date(b.created_at || b.createdAt || b.CreatedAt || 0);
-          return dateB - dateA; // Newest first (descending order)
-        });
-        
-        setCustomers(sortedCustomers);
-      } else {
-        throw new Error(data.message || 'Failed to fetch customers - invalid response format');
-      }
+      await fetchCustomersPage(1, { append: false });
+      initialLoadDoneRef.current = true;
     } catch (err) {
       console.error('Customers fetch error:', err);
       setError('Failed to load customers. Please try again.');
       setCustomers([]);
+      setHasMoreCustomers(false);
+      hasMoreCustomersRef.current = false;
     } finally {
       stopLoading();
+    }
+  };
+
+  const loadMoreCustomers = async () => {
+    if (
+      !initialLoadDoneRef.current ||
+      loadMoreLockRef.current ||
+      !hasMoreCustomersRef.current ||
+      loadingMore
+    ) {
+      return;
+    }
+    loadMoreLockRef.current = true;
+    setLoadingMore(true);
+    const nextPage = customersPageRef.current + 1;
+    try {
+      await fetchCustomersPage(nextPage, { append: true });
+    } catch (err) {
+      console.error('Customers load more error:', err);
+      setHasMoreCustomers(false);
+      hasMoreCustomersRef.current = false;
+    } finally {
+      loadMoreLockRef.current = false;
+      setLoadingMore(false);
     }
   };
 
@@ -172,12 +263,55 @@ const Customers = ({ navigation }) => {
     fetchCustomers();
   };
 
+  const handleGenerateCredentials = async (customer) => {
+    try {
+      const token = await getToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please login again.');
+      }
+
+      const response = await fetch('https://app.stormbuddi.com/api/mobile/clients/generate-credentials', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          client_id: customer.id,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed to generate credentials. Status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.success !== false) {
+        // Mark this customer as having credentials generated (one-time use)
+        setCredentialsGenerated(prev => new Set(prev).add(customer.id));
+        showSuccess('User credentials have been sent successfully!');
+      } else {
+        throw new Error(data.message || 'Failed to generate credentials');
+      }
+    } catch (err) {
+      console.error('Generate credentials error:', err);
+      showError(err.message || 'Failed to generate credentials. Please try again.');
+    }
+  };
+
   const renderCustomerCard = useCallback(({ item }) => (
     <CustomerCard
       customer={item}
       onPress={() => handleCustomerPress(item)}
+      onGenerateCredentials={handleGenerateCredentials}
+      hasCredentialsGenerated={credentialsGenerated.has(item.id)}
     />
-  ), []);
+  ), [credentialsGenerated]);
 
   const listHeaderComponent = useMemo(() => (
     <View style={styles.listHeader}>
@@ -227,7 +361,9 @@ const Customers = ({ navigation }) => {
           <FlatList
             data={filteredCustomers}
             renderItem={renderCustomerCard}
-            keyExtractor={(item) => item.id?.toString() || Math.random().toString()}
+            keyExtractor={(item, index) =>
+              item.id != null ? String(item.id) : `customer-${index}`
+            }
             contentContainerStyle={[styles.customersContainer, { paddingBottom: 100 }]}
             showsVerticalScrollIndicator={false}
             initialNumToRender={10}
@@ -254,6 +390,19 @@ const Customers = ({ navigation }) => {
                   </Text>
                 </View>
               )
+            }
+            onEndReached={() => {
+              if (hasMoreCustomers && !loadingMore) {
+                loadMoreCustomers();
+              }
+            }}
+            onEndReachedThreshold={0.35}
+            ListFooterComponent={
+              loadingMore ? (
+                <View style={styles.listFooterLoader}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                </View>
+              ) : null
             }
           />
         </View>
@@ -302,6 +451,11 @@ const styles = StyleSheet.create({
   },
   listHeader: {
     paddingBottom: 20,
+  },
+  listFooterLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   titleContainer: {
     marginHorizontal: 0,

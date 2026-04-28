@@ -112,7 +112,7 @@ const ClientSelectionDropdown = ({
       setTimeout(() => {
         setDisplayedItemsCount(prev => {
           const newCount = prev + ITEMS_PER_PAGE;
-          console.log(`Loading more: Showing ${newCount} of ${filteredClients.length} clients`);
+          
           setLoadingMore(false);
           return newCount;
         });

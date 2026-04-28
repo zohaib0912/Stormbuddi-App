@@ -178,11 +178,11 @@ const PaymentModal = ({ visible, onClose, invoice, onPaymentSuccess }) => {
         payment_date: new Date().toISOString(),
       };
 
-      console.log('Processing payment:', paymentData);
+     
 
       // Make API call to process payment (confirmed endpoint)
       const endpoint = 'https://app.stormbuddi.com/api/mobile/invoices/process-payment';
-      console.log('Calling payment endpoint:', endpoint);
+      
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -210,9 +210,9 @@ const PaymentModal = ({ visible, onClose, invoice, onPaymentSuccess }) => {
       let result;
       try {
         result = await response.json();
-        console.log('Payment API Success Response:', result);
+        
       } catch (jsonError) {
-        console.error('Error parsing response JSON:', jsonError);
+        
         throw new Error('Invalid response format from server');
       }
 

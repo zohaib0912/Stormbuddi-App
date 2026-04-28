@@ -78,7 +78,7 @@ const CalendarStrip = forwardRef(({
     
     if (centerIndex >= 0 && centerIndex < calendarDates.length) {
       const centerDate = calendarDates[centerIndex];
-      console.log(`Scrolled to date: ${centerDate.toDateString()}, Month: ${centerDate.getMonth() + 1}`);
+      
       setVisibleMonth(centerDate);
     }
   };

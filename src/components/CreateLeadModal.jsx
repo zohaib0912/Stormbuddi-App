@@ -317,7 +317,7 @@ const CreateLeadModal = ({
       const data = await response.json();
       
       if (data.success) {
-        console.log('Lead created successfully:', data);
+       
         
         // Show success message
         showSuccess('Lead created successfully!');

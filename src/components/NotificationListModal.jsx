@@ -105,7 +105,7 @@ const NotificationListModal = ({ visible, onClose }) => {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('Unread count:', data);
+        
         if (data.success && typeof data.data === 'number') {
           return data.data;
         }
@@ -287,7 +287,7 @@ const NotificationListModal = ({ visible, onClose }) => {
       markAsRead(notification.id);
     }
     // Handle notification-specific actions here
-    console.log('Notification pressed:', notification);
+    
   };
 
   const unreadCount = notifications.filter(n => !n.read).length;

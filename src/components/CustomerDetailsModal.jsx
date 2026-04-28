@@ -104,9 +104,9 @@ const CustomerDetailsModal = ({
       if (!response.ok) {
         // If endpoint doesn't exist (405) or other error, silently fail and use passed customer data
         if (response.status === 405 || response.status === 404) {
-          console.log('Customer details endpoint not available, using passed customer data');
+          
         } else {
-          console.warn('Failed to fetch customer details:', response.status);
+          
         }
         return null;
       }
@@ -115,11 +115,11 @@ const CustomerDetailsModal = ({
       
       // Handle different response structures
       const customerDetails = data.success && data.data ? data.data : data.data || data;
-      console.log('Full customer details fetched:', customerDetails);
+      
       return customerDetails;
     } catch (error) {
       // Silently fail - use the customer data that was passed in
-      console.log('Error fetching customer details, using passed customer data:', error.message);
+      
       return null;
     }
   }, []);
@@ -162,6 +162,60 @@ const CustomerDetailsModal = ({
       const token = await getToken();
       if (!token) return;
 
+      // Fetch subscription plans from the correct API endpoint
+      const endpoint = 'https://app.stormbuddi.com/api/mobile/clients/subscription-plans';
+
+      try {
+        const response = await fetch(endpoint, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          
+          // Handle different response structures
+          let plansList = [];
+          if (data.success && data.plans) {
+            // API returns { success: true, plans: [...] }
+            plansList = Array.isArray(data.plans) ? data.plans : [data.plans];
+          } else if (data.success && data.data) {
+            // Alternative structure: { success: true, data: [...] }
+            plansList = Array.isArray(data.data) ? data.data : [data.data];
+          } else if (Array.isArray(data.plans)) {
+            plansList = data.plans;
+          } else if (Array.isArray(data.data)) {
+            plansList = data.data;
+          } else if (Array.isArray(data)) {
+            plansList = data;
+          }
+
+          if (plansList.length > 0) {
+            // Store full plan objects for later use
+            setSubscriptionPlansData(plansList);
+            
+            // Extract names for dropdown display
+            const planNames = plansList.map(plan => 
+              plan.name || plan.Name || plan.title || plan.slug || plan.Slug
+            );
+            setSubscriptionPackages(planNames);
+            return;
+          } else {
+            console.warn('API returned empty plans array. Response:', data);
+          }
+        } else {
+          console.warn(`API request failed with status ${response.status} for endpoint: ${endpoint}`);
+        }
+      } catch (err) {
+        console.error('Error fetching subscription plans from API:', err);
+      }
+
+      // Fallback: If API endpoint fails, use hardcoded values from the database
       const fallbackPlans = [
         { id: 17, name: 'Bronze Package', slug: 'bronze' },
         { id: 18, name: 'Silver Package', slug: 'silver' },
@@ -173,6 +227,7 @@ const CustomerDetailsModal = ({
       setSubscriptionPackages(fallbackPlans.map(p => p.name));
     } catch (error) {
       console.error('Error fetching subscription plans:', error);
+      // Use hardcoded fallback values
       const fallbackPlans = [
         { id: 17, name: 'Bronze Package', slug: 'bronze' },
         { id: 18, name: 'Silver Package', slug: 'silver' },
@@ -211,7 +266,7 @@ const CustomerDetailsModal = ({
       // Extract customer ID - try different possible field names
       const id = customer.id || customer.Id || customer.ID || customer.client_id || customer.ClientId;
       setCustomerId(id);
-      console.log('Customer ID extracted:', id, 'from customer object:', customer);
+      
 
       // First, load basic data from the customer object passed in
       // Then fetch full details from API
@@ -423,8 +478,8 @@ const CustomerDetailsModal = ({
         SubscriptionsPlan: subscriptionsPlanId, // Send as number
       };
 
-      console.log('Updating personal details:', apiData);
-      console.log('Using customer ID:', customerId, 'from customer:', customer);
+
+      
 
       if (!customerId) {
         showError('Customer ID is missing. Cannot update customer.');
@@ -518,7 +573,7 @@ const CustomerDetailsModal = ({
         }
         const subscriptionPlanValue = getSubscriptionPlanValue(personalData.subscription_package);
         const subscriptionsPlanId = subscriptionPlanValue ? parseInt(subscriptionPlanValue, 10) : null;
-        console.log('Subscription plan value for property update:', subscriptionsPlanId, 'from:', personalData.subscription_package);
+        
         
         if (!subscriptionsPlanId || isNaN(subscriptionsPlanId)) {
           showError('Please select a valid subscription package');
@@ -553,16 +608,7 @@ const CustomerDetailsModal = ({
           });
         }
 
-        console.log('Updating property details with file upload');
-        console.log('Using customer ID:', customerId);
-        console.log('Personal data being sent:', {
-          Name: personalData.full_name,
-          Email: personalData.email,
-          Phone: personalData.phone,
-          Address: personalData.address,
-          ZipCode: personalData.zip_code,
-          SubscriptionsPlan: subscriptionPlanValue
-        });
+        
 
         if (!customerId) {
           showError('Customer ID is missing. Cannot update customer.');
@@ -595,7 +641,7 @@ const CustomerDetailsModal = ({
         }
 
         const data = await response.json();
-        console.log('Property update success response (FormData):', data);
+        
         if (data.success) {
           showSuccess('Property details updated successfully!');
           onUpdate && onUpdate();
@@ -636,9 +682,7 @@ const CustomerDetailsModal = ({
           ZoningCode: propertyData.zoning_code || '',
         };
 
-        console.log('Updating property details:', apiData);
-        console.log('Using customer ID:', customerId);
-        console.log('Subscription plan value:', subscriptionsPlanId, 'from:', personalData.subscription_package);
+       
 
         if (!customerId) {
           showError('Customer ID is missing. Cannot update customer.');
@@ -671,7 +715,7 @@ const CustomerDetailsModal = ({
         }
 
         const data = await response.json();
-        console.log('Property update success response:', data);
+        
         if (data.success) {
           showSuccess('Property details updated successfully!');
           onUpdate && onUpdate();
@@ -803,7 +847,7 @@ const CustomerDetailsModal = ({
 
                 {/* Phone Number */}
                 <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>Phone Number *</Text>
+                  <Text style={styles.inputLabel}>Phone Number</Text>
                   <TextInput
                     style={[
                       styles.textInput,
@@ -884,7 +928,12 @@ const CustomerDetailsModal = ({
                     />
                   </TouchableOpacity>
                   {showPackageDropdown && (
-                    <View style={styles.dropdownList}>
+                    <ScrollView 
+                      style={styles.dropdownList}
+                      nestedScrollEnabled={true}
+                      showsVerticalScrollIndicator={true}
+                      keyboardShouldPersistTaps="handled"
+                    >
                       {subscriptionPackages.map((pkg, index) => (
                         <TouchableOpacity
                           key={index}
@@ -908,7 +957,7 @@ const CustomerDetailsModal = ({
                           )}
                         </TouchableOpacity>
                       ))}
-                    </View>
+                    </ScrollView>
                   )}
                   {errors.subscription_package && (
                     <Text style={styles.errorText}>{errors.subscription_package}</Text>
@@ -1377,6 +1426,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    overflow: 'hidden',
   },
   dropdownItem: {
     flexDirection: 'row',

@@ -13,7 +13,7 @@
  * - Data structure is already compatible with typical REST API responses
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -36,12 +36,23 @@ import PageLoader from '../components/PageLoader';
 import ErrorMessage from '../components/ErrorMessage';
 import NotificationListModal from '../components/NotificationListModal';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { getToken, hasNotificationPermissionBeenRequested, setNotificationPermissionRequested } from '../utils/tokenStorage';
+import {
+  getToken,
+  getUserData,
+  hasNotificationPermissionBeenRequested,
+  setNotificationPermissionRequested,
+} from '../utils/tokenStorage';
+import {
+  readDashboardCache,
+  writeDashboardCache,
+  resolveDashboardUserKey,
+  isValidCachedDashboardPayload,
+} from '../utils/dashboardCache';
 import usePageLoader from '../hooks/usePageLoader';
 import useNotifications from '../hooks/useNotifications';
 import NotificationService from '../services/NotificationService';
 import { colors } from '../theme/colors';
-import messaging from '@react-native-firebase/messaging';
+import { getMessaging, hasPermission, AuthorizationStatus } from '@react-native-firebase/messaging';
 
 
 const { width, height } = Dimensions.get('window');
@@ -208,6 +219,8 @@ const Dashboard = ({ navigation }) => {
   const [error, setError] = useState(null);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [hasCheckedPermission, setHasCheckedPermission] = useState(false);
+  const permissionSyncStartedRef = useRef(false);
+  const permissionRequestTimeoutRef = useRef(null);
   const [canvassingCustomers, setCanvassingCustomers] = useState([]);
   const [canvassingPolygons, setCanvassingPolygons] = useState([]);
   const [canvassingRegion, setCanvassingRegion] = useState({
@@ -218,15 +231,15 @@ const Dashboard = ({ navigation }) => {
   });
   
   // Use the new page loader hook - start with false, only show when screen is focused
-  const { shouldShowLoader, startLoading, stopLoading, resetLoader } = usePageLoader(false);
+  const { shouldShowLoader, startLoading, stopLoading, resetLoader } = usePageLoader(true);
   
-  // Use notifications hook to check permission status
-  const { isPermissionGranted, loading: notificationLoading } = useNotifications();
+  // Run notification bootstrap logic once for this screen lifecycle
+  useNotifications();
 
   // Fetch storm alerts from backend (Texas storms endpoint)
   const fetchStormAlerts = async (token) => {
     try {
-      const response = await fetch('https://app.stormbuddi.com/api/nexrad/all-texas-storms', {
+      const response = await fetch('https://app.stormbuddi.com/api/mobile/dashboard/texas-storms', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -236,7 +249,7 @@ const Dashboard = ({ navigation }) => {
         },
       });
 
-      console.log('Storm alerts response:', response);
+      
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -321,7 +334,7 @@ const Dashboard = ({ navigation }) => {
       const leadsData = await response.json();
       
       if (leadsData.success && leadsData.data) {
-        console.log('Leads fetched successfully:', leadsData);
+        
         
         // Map leads API response to expected format (show all leads in dashboard, they'll be scrollable)
         const mappedLeads = leadsData.data.map((lead) => ({
@@ -671,20 +684,30 @@ const Dashboard = ({ navigation }) => {
     }
   }, [canvassingPolygons, canvassingCustomers]);
 
-  // Fetch dashboard data from backend API
-  const fetchDashboardData = async () => {
-    startLoading();
-    setError(null);
-    
+  // Fetch dashboard data from backend API (silent = stale-while-revalidate background refresh)
+  const fetchDashboardData = async ({
+    silent = false,
+    isCancelled = () => false,
+    cacheUserKey = '',
+  } = {}) => {
+    if (!silent) {
+      startLoading();
+    }
+    if (!silent) {
+      setError(null);
+    }
+
     try {
-      // Get stored token
       const token = await getToken();
-      
+
       if (!token) {
         throw new Error('No authentication token found. Please login again.');
       }
 
-      // Fetch KPIs, storm alerts, and leads in parallel
+      if (isCancelled()) {
+        return;
+      }
+
       const [kpiResponse, stormAlerts, leads] = await Promise.all([
         fetch('https://app.stormbuddi.com/api/mobile/dashboard/kpis', {
           method: 'GET',
@@ -696,10 +719,9 @@ const Dashboard = ({ navigation }) => {
           },
         }),
         fetchStormAlerts(token),
-        fetchLeads(token)
+        fetchLeads(token),
       ]);
 
-      // Fetch canvassing data separately (async, doesn't block)
       fetchCanvassingData();
 
       if (!kpiResponse.ok) {
@@ -707,54 +729,91 @@ const Dashboard = ({ navigation }) => {
       }
 
       const kpiData = await kpiResponse.json();
-      
+
+      if (isCancelled()) {
+        return;
+      }
+
       if (kpiData.success && kpiData.data) {
-        console.log('Dashboard KPIs fetched successfully:', kpiData);
-        
-        // Map API response to expected format
         const mappedData = {
           metrics: [
-            { 
-              id: 'unactioned-leads', 
-              value: kpiData.data.unactioned_leads || 0, 
-              label: 'Unactioned Leads'
+            {
+              id: 'unactioned-leads',
+              value: kpiData.data.unactioned_leads || 0,
+              label: 'Unactioned Leads',
             },
-            { 
-              id: 'actioned-leads', 
-              value: kpiData.data.actioned_leads || 0, 
-              label: 'Actioned Leads'
+            {
+              id: 'actioned-leads',
+              value: kpiData.data.actioned_leads || 0,
+              label: 'Actioned Leads',
             },
-            { 
-              id: 'active-jobs', 
-              value: kpiData.data.active_jobs || 0, 
-              label: 'Active Jobs'
+            {
+              id: 'active-jobs',
+              value: kpiData.data.active_jobs || 0,
+              label: 'Active Jobs',
             },
           ],
-          stormAlerts: stormAlerts, // Use real storm alerts from XWeather API
-          leads: leads, // Use real leads from backend API
+          stormAlerts,
+          leads,
         };
-        
+
+        if (isCancelled()) {
+          return;
+        }
+
         setData(mappedData);
+        if (!silent) {
+          setError(null);
+        }
+        if (cacheUserKey) {
+          await writeDashboardCache({ userKey: cacheUserKey, payload: mappedData });
+        }
       } else {
         throw new Error('Invalid API response format');
       }
     } catch (err) {
       console.error('Dashboard data fetch error:', err);
-      setError('Failed to load dashboard data. Using offline data.');
-      // Fallback to mock data on error
-      setData(mockData);
+      if (!silent) {
+        setError('Failed to load dashboard data. Using offline data.');
+        setData(mockData);
+      }
     } finally {
-      stopLoading();
+      if (!silent) {
+        stopLoading();
+      }
     }
   };
 
-  // Only fetch data and show loader when Dashboard screen is focused
   useFocusEffect(
     React.useCallback(() => {
-      fetchDashboardData();
-      
-      // Cleanup: stop loader when screen loses focus
+      let cancelled = false;
+      const isCancelled = () => cancelled;
+
+      (async () => {
+        const token = await getToken();
+        const user = await getUserData();
+        const cacheUserKey = resolveDashboardUserKey(user, token);
+
+        const cacheEntry = await readDashboardCache();
+        const hasValidCache =
+          Boolean(cacheUserKey) &&
+          cacheEntry?.userKey === cacheUserKey &&
+          isValidCachedDashboardPayload(cacheEntry?.payload);
+
+        if (!isCancelled() && hasValidCache) {
+          setData(cacheEntry.payload);
+          stopLoading();
+        }
+
+        await fetchDashboardData({
+          silent: hasValidCache,
+          isCancelled,
+          cacheUserKey,
+        });
+      })();
+
       return () => {
+        cancelled = true;
         resetLoader();
       };
     }, [])
@@ -784,7 +843,7 @@ const Dashboard = ({ navigation }) => {
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
-          console.log(`Notifications ${enabled ? 'enabled' : 'disabled'} in backend`);
+          
           return true;
         }
       }
@@ -820,11 +879,11 @@ const Dashboard = ({ navigation }) => {
           // Backend returns notifications_enabled as boolean, convert to status string
           const enabled = data.data.notifications_enabled === true || data.data.notifications_enabled === 1;
           const status = enabled ? 'active' : 'inactive';
-          console.log('Backend status fetched:', status);
+          
           return status;
         }
       }
-      console.log('Backend status not found or invalid response');
+      
       return null;
     } catch (error) {
       console.error('Error fetching notification status:', error);
@@ -834,29 +893,23 @@ const Dashboard = ({ navigation }) => {
 
   // Request notification permission on first login only (after dashboard loads)
   useEffect(() => {
-    console.log('Permission check effect triggered:', {
-      shouldShowLoader,
-      notificationLoading,
-      hasCheckedPermission,
-      isPermissionGranted
-    });
-
     // Wait for dashboard to load (notification loading might take time, so we'll check directly)
-    if (!shouldShowLoader && !hasCheckedPermission) {
-      console.log('Dashboard loaded, checking permission status...');
+    if (!shouldShowLoader && !hasCheckedPermission && !permissionSyncStartedRef.current) {
+      permissionSyncStartedRef.current = true;
+     
       const requestNotificationPermissionIfFirstTime = async () => {
         try {
           // Check if permission was already requested before
           const permissionRequested = await hasNotificationPermissionBeenRequested();
-          console.log('Permission requested before?', permissionRequested);
+          
           
           // Check permission status directly from Firebase messaging
           let currentPermissionGranted = false;
           try {
-            const authStatus = await messaging().hasPermission();
-            currentPermissionGranted = authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
-                                      authStatus === messaging.AuthorizationStatus.PROVISIONAL;
-            console.log('Current permission status from messaging:', authStatus, 'Granted:', currentPermissionGranted);
+            const authStatus = await hasPermission(getMessaging());
+            currentPermissionGranted = authStatus === AuthorizationStatus.AUTHORIZED ||
+                                      authStatus === AuthorizationStatus.PROVISIONAL;
+            
           } catch (error) {
             console.error('Error checking permission status:', error);
           }
@@ -865,14 +918,14 @@ const Dashboard = ({ navigation }) => {
           // 1. Permission hasn't been requested before (first time login)
           // 2. Permission is not already granted by system
           if (!permissionRequested && !currentPermissionGranted) {
-            console.log('Requesting notification permission in 1.5 seconds...');
+            
             // Small delay to ensure UI is ready and dashboard is visible
-            setTimeout(async () => {
+            permissionRequestTimeoutRef.current = setTimeout(async () => {
               try {
-                console.log('Calling NotificationService.requestPermission()...');
+                
                 // Request permission
                 const granted = await NotificationService.requestPermission();
-                console.log('Permission request result:', granted);
+                
                 
                 // Mark as requested regardless of whether user granted or denied
                 await setNotificationPermissionRequested();
@@ -881,9 +934,9 @@ const Dashboard = ({ navigation }) => {
                 await updateNotificationStatusInBackend(granted);
                 
                 if (granted) {
-                  console.log('Notification permission granted and enabled in backend');
+                  
                 } else {
-                  console.log('Notification permission denied and disabled in backend');
+                  
                 }
               } catch (error) {
                 console.error('Error in permission request flow:', error);
@@ -891,51 +944,49 @@ const Dashboard = ({ navigation }) => {
               }
             }, 1500);
           } else if (permissionRequested) {
-            console.log('Permission already requested before, checking backend status...');
+            
             // Permission was already requested - check backend status before syncing
             // Only sync if backend status doesn't exist or needs updating, respect user's manual disable
             const backendStatus = await getBackendNotificationStatus();
-            console.log('Backend notification status:', backendStatus);
+            
             
             if (backendStatus === null) {
               // Backend status doesn't exist, sync with current permission
-              console.log('Backend status not found, syncing with system permission...');
-              const statusToSet = currentPermissionGranted ? 'active' : 'inactive';
               await updateNotificationStatusInBackend(currentPermissionGranted);
               if (currentPermissionGranted) {
                 try {
                   await NotificationService.updateFCMTokenAfterLogin();
-                  console.log('FCM token updated after syncing');
+                  
                 } catch (error) {
                   console.error('Error updating FCM token:', error);
                 }
               }
             } else if (backendStatus === 'inactive') {
               // Backend status is explicitly inactive (disabled) - respect it, do NOT enable even if permission granted
-              console.log('Backend status is INACTIVE - respecting user preference. Not enabling.');
+              
               // Don't update anything, user has manually disabled
             } else if (backendStatus === 'active') {
               // Backend status is active - just ensure FCM token is up to date if permission granted
-              console.log('Backend status is ACTIVE - ensuring FCM token is updated.');
+              
               if (currentPermissionGranted) {
                 try {
                   await NotificationService.updateFCMTokenAfterLogin();
-                  console.log('FCM token updated');
+                  
                 } catch (error) {
-                  console.error('Error updating FCM token:', error);
+                  
                 }
               }
             } else {
               // Unknown backend status - don't sync, just log
-              console.log('Unknown backend status value:', backendStatus);
+             
             }
           } else if (currentPermissionGranted) {
-            console.log('Permission already granted by system, enabling in backend...');
+            
             // Permission already granted, enable in backend
             await updateNotificationStatusInBackend(true);
-            console.log('Notification permission already granted. Enabled in backend.');
+           
           } else {
-            console.log('Unexpected state - permission not requested, not granted, but not triggering request');
+            
           }
           
           setHasCheckedPermission(true);
@@ -946,12 +997,14 @@ const Dashboard = ({ navigation }) => {
       };
 
       requestNotificationPermissionIfFirstTime();
-    } else {
-      console.log('Conditions not met yet, waiting...', {
-        shouldShowLoader,
-        hasCheckedPermission
-      });
     }
+
+    return () => {
+      if (permissionRequestTimeoutRef.current) {
+        clearTimeout(permissionRequestTimeoutRef.current);
+        permissionRequestTimeoutRef.current = null;
+      }
+    };
   }, [shouldShowLoader, hasCheckedPermission]);
 
   const handleNotificationPress = () => {
@@ -1302,16 +1355,13 @@ const Dashboard = ({ navigation }) => {
                     />
                   ))}
                 </MapView>
-                <View style={styles.canvassingOverlay}>
-                  <Text style={styles.canvassingOverlayText}>
-                    {canvassingCustomers.length} Customers
-                  </Text>
-                  {canvassingPolygons.length > 0 && (
+                {canvassingPolygons.length > 0 && (
+                  <View style={styles.canvassingOverlay}>
                     <Text style={styles.canvassingOverlayText}>
                       {canvassingPolygons.length} Hail Areas
                     </Text>
-                  )}
-                </View>
+                  </View>
+                )}
               </View>
             </Card>
           </View>

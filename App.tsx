@@ -19,7 +19,7 @@ import LoadingSpinner from './src/components/LoadingSpinner';
 import PageLoader from './src/components/PageLoader';
 import Login from './src/screens/Login';
 import ForgotPassword from './src/screens/ForgotPassword';
-import ResetPassword from './src/screens/ResetPassword';
+import Signup from './src/screens/Signup';
 import Dashboard from './src/screens/Dashboard';
 import Invoice from './src/screens/Invoice';
 import Leads from './src/screens/Leads';
@@ -32,6 +32,8 @@ import JobDetails from './src/screens/JobDetails';
 import InspectionReport from './src/screens/InspectionReport';
 import Customers from './src/screens/Customers';
 import Canvassing from './src/screens/Canvassing';
+import ChatList from './src/screens/ChatList';
+import ChatDetail from './src/screens/ChatDetail';
 import DrawerContent from './src/components/DrawerContent';
 import NotificationService from './src/services/NotificationService';
 import usePageLoader from './src/hooks/usePageLoader';
@@ -81,13 +83,13 @@ function MainStackNavigator() {
           open: {
             animation: 'timing',
             config: {
-              duration: 500,
+              duration: 280,
             },
           },
           close: {
             animation: 'timing',
             config: {
-              duration: 500,
+              duration: 280,
             },
           },
         },
@@ -105,6 +107,8 @@ function MainStackNavigator() {
       <Stack.Screen name="InspectionReport" component={withSafeArea(InspectionReport)} />
       <Stack.Screen name="Customers" component={withSafeArea(Customers)} />
       <Stack.Screen name="Canvassing" component={withSafeArea(Canvassing)} />
+      <Stack.Screen name="ChatList" component={withSafeArea(ChatList)} />
+      <Stack.Screen name="ChatDetail" component={withSafeArea(ChatDetail)} />
     </Stack.Navigator>
   );
 }
@@ -212,7 +216,7 @@ function App() {
           >
             <Stack.Screen name="Login" component={withSafeArea(Login)} />
             <Stack.Screen name="ForgotPassword" component={withSafeArea(ForgotPassword)} />
-            <Stack.Screen name="ResetPassword" component={withSafeArea(ResetPassword)} />
+            <Stack.Screen name="Signup" component={withSafeArea(Signup)} />
             <Stack.Screen name="Main" component={DrawerNavigator} />
           </Stack.Navigator>
         </NavigationContainer>

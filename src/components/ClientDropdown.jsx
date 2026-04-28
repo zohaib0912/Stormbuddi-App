@@ -90,7 +90,7 @@ const ClientDropdown = ({
         }
       }
     } catch (error) {
-      console.log('Error reading cache from storage:', error);
+      
     }
     
     // 3. No valid cache - fetch from API

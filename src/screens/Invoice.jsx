@@ -26,6 +26,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/FontAwesome';
+import MaterialIcon from 'react-native-vector-icons/MaterialIcons';
 
 // Import reusable components
 import Header from '../components/Header';
@@ -40,6 +41,7 @@ import NotificationListModal from '../components/NotificationListModal';
 import { getToken } from '../utils/tokenStorage';
 import { downloadInvoice, shareInvoice } from '../utils/invoiceDownload';
 import usePageLoader from '../hooks/usePageLoader';
+import { useToast } from '../contexts/ToastContext';
 import { colors } from '../theme/colors';
 
 
@@ -97,15 +99,17 @@ const mockInvoices = [
 
 const Invoice = ({ navigation }) => {
   const insets = useSafeAreaInsets();
+  const { showSuccess, showError } = useToast();
   const [invoices, setInvoices] = useState([]);
   const [error, setError] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
   
   // Use the new page loader hook - start with false, only show when screen is focused
-  const { shouldShowLoader, startLoading, stopLoading, resetLoader } = usePageLoader(false);
+  const { shouldShowLoader, startLoading, stopLoading, resetLoader } = usePageLoader(true);
 
   // Fetch invoices from backend API
   const fetchInvoices = async () => {
@@ -137,7 +141,7 @@ const Invoice = ({ navigation }) => {
       const data = await response.json();
       
       if (data.success && data.data) {
-        console.log('Invoices fetched successfully:', data.data);
+        
         
         // Map API response to match Invoice component expected format
         const mappedInvoices = data.data.map(invoice => {
@@ -204,7 +208,7 @@ const Invoice = ({ navigation }) => {
         setInvoices(mappedInvoices);
       } else {
         // Fallback to mock data if API structure is different
-        console.log('API response structure different, using mock data');
+       
         setInvoices(mockInvoices);
       }
     } catch (err) {
@@ -249,25 +253,25 @@ const Invoice = ({ navigation }) => {
   };
 
   const handleInvoicePress = (invoice) => {
-    console.log('Invoice pressed:', invoice.id);
+    
     // Open payment modal on card press as well
     handlePaymentPress(invoice);
   };
 
   const handlePaymentPress = (invoice) => {
-    console.log('Opening Payment Modal for invoice:', invoice?.id);
+    
     setSelectedInvoice(invoice);
     setShowPaymentModal(true);
   };
 
   const handlePaymentModalClose = () => {
-    console.log('Closing Payment Modal');
+    
     setShowPaymentModal(false);
     setSelectedInvoice(null);
   };
 
   const handlePaymentSuccess = (updatedInvoice) => {
-    console.log('Payment success - updating invoice:', updatedInvoice);
+    
     
     // Update the invoice with the new data from API response
     setInvoices(prevInvoices => 
@@ -291,7 +295,7 @@ const Invoice = ({ navigation }) => {
     downloadInvoice(
       invoice,
       (downloadPath) => {
-        console.log('Invoice downloaded to:', downloadPath);
+        
       },
       (error) => {
         console.error('Download failed:', error);
@@ -301,6 +305,49 @@ const Invoice = ({ navigation }) => {
 
   const handleSharePress = (invoice) => {
     shareInvoice(invoice);
+  };
+
+  const handleSendEmail = async (invoice) => {
+    if (sendingEmail) return; // Prevent multiple clicks
+    
+    setSendingEmail(true);
+    try {
+      const token = await getToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please login again.');
+      }
+
+      const response = await fetch(`https://app.stormbuddi.com/api/mobile/invoices/${invoice.id}/send-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed to send email. Status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      // Show success toast if response is OK (status 200-299)
+      // Check for success in response data, or assume success if response was OK
+      if (data.success !== false) {
+        showSuccess('Email has been sent successfully!');
+      } else {
+        throw new Error(data.message || 'Failed to send invoice email');
+      }
+    } catch (err) {
+      console.error('Send email error:', err);
+      showError(err.message || 'Failed to send invoice email. Please try again.');
+    } finally {
+      setSendingEmail(false);
+    }
   };
 
   const getStatusColor = (status) => {
@@ -435,9 +482,17 @@ const Invoice = ({ navigation }) => {
                     </View>
                     {/* Right-side compact icons */}
                     <View style={styles.rightIconRow}>
+                      <TouchableOpacity 
+                        style={[styles.viewButton, sendingEmail && styles.viewButtonDisabled]}
+                        onPress={() => handleSendEmail(invoice)}
+                        disabled={sendingEmail}
+                        accessibilityLabel="Send Email"
+                      >
+                        <MaterialIcon name="email" size={16} color={sendingEmail ? colors.textSecondary : colors.primary} />
+                      </TouchableOpacity>
                       {invoice.status !== 'paid' && (
                         <TouchableOpacity 
-                          style={styles.viewButton}
+                          style={[styles.viewButton, { marginLeft: 8 }]}
                           onPress={() => handlePaymentPress(invoice)}
                           accessibilityLabel="Pay"
                         >
@@ -473,10 +528,11 @@ const Invoice = ({ navigation }) => {
         )}
       </ScrollView>
 
-      <FloatingActionButton
+      {/* Add Invoice Button - Disabled for now */}
+      {/* <FloatingActionButton
         onPress={handleCreateInvoice}
         icon="+"
-      />
+      /> */}
 
       <CreateInvoiceModal
         visible={showCreateModal}
@@ -600,7 +656,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#f0f0f0',
     justifyContent: 'center',
     alignItems: 'center',
-
+  },
+  viewButtonDisabled: {
+    opacity: 0.5,
   },
   rightIconRow: {
     flexDirection: 'row',

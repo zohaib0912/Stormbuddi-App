@@ -1,15 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   TextInput,
+  Image,
   ImageBackground,
   StyleSheet,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   StatusBar,
   Dimensions,
   Alert,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
@@ -26,9 +29,31 @@ const ForgotPassword = ({ navigation }) => {
   const [email, setEmail] = useState('');
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   
   // Use the page loader hook
   const { shouldShowLoader, startLoading, stopLoading } = usePageLoader(false);
+
+  // Handle keyboard show/hide
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+      }
+    );
+    const keyboardDidHideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+      }
+    );
+
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
+  }, []);
 
   // API call to send password reset email
   const sendPasswordResetEmail = async (email) => {
@@ -81,132 +106,142 @@ const ForgotPassword = ({ navigation }) => {
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
-      
-      {/* Global Page Loader */}
-      <PageLoader 
-        visible={shouldShowLoader}
-        message="Sending reset email..."
-      />
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+        
+        {/* Global Page Loader */}
+        <PageLoader 
+          visible={shouldShowLoader}
+          message="Sending reset email..."
+        />
 
-      {/* Only show content when not loading */}
-      {!shouldShowLoader && (
-        <>
-          {/* Background Image with Construction Worker */}
-          <ImageBackground
-            source={require('../assets/images/sdf.jpg')}
-            style={styles.backgroundImage}
-            resizeMode="cover"
-          >
-            {/* Overlay for better text readability */}
-            <View style={styles.overlay} />
-            
-            <KeyboardAvoidingView 
-              style={styles.keyboardAvoidingView}
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        {/* Only show content when not loading */}
+        {!shouldShowLoader && (
+          <>
+            {/* Background Image with Construction Worker */}
+            <ImageBackground
+              source={require('../assets/images/login.jpg')}
+              style={styles.backgroundImage}
+              resizeMode="cover"
             >
-              {/* Header with Back Button */}
-              <View style={styles.headerContainer}>
-                <TouchableOpacity 
-                  style={styles.backButton}
-                  onPress={handleBackToLogin}
-                >
-                  <Icon name="arrow-back" size={24} color="#ffffff" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Reset Password</Text>
-              </View>
+              {/* Overlay for better text readability */}
+              <View style={styles.overlay} />
+              
+              <KeyboardAvoidingView 
+                style={styles.keyboardAvoidingView}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+                enabled
+              >
+                {/* StormBuddi Logo */}
+                <View style={[styles.logoContainer, keyboardHeight > 0 && styles.logoContainerSmall]}>
+                  <Image
+                    source={require('../assets/images/logo.png')}
+                    style={styles.logoImage}
+                    resizeMode="contain"
+                  />
+                </View>
 
-              {/* StormBuddi Logo */}
-              <View style={styles.logoContainer}>
-                <Text style={styles.logoText}>StormBuddi</Text>
-              </View>
-
-              {/* Form Container */}
-              <View style={styles.formContainer}>
-                {!success ? (
-                  <>
-                    {/* Instructions */}
-                    <View style={styles.instructionsContainer}>
-                      <Text style={styles.instructionsTitle}>Forgot your password?</Text>
-                      <Text style={styles.instructionsText}>
-                        No worries! Enter your email address and we'll send you a link to reset your password.
-                      </Text>
-                    </View>
-
-                    {/* Email Input */}
-                    <View style={styles.inputContainer}>
-                      <TextInput
-                        style={styles.input}
-                        placeholder="Email Address"
-                        placeholderTextColor="#666"
-                        value={email}
-                        onChangeText={setEmail}
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        keyboardType="email-address"
-                        returnKeyType="done"
-                        onSubmitEditing={handleSendResetEmail}
-                      />
-                    </View>
-
-                    {/* Error Message */}
-                    {error && (
-                      <View style={styles.errorContainer}>
-                        <Text style={styles.errorText}>{error}</Text>
+                {/* Form Container */}
+                <View style={[styles.formContainer, { paddingBottom: keyboardHeight > 0 ? 20 : 80 }]}>
+                  {!success ? (
+                    <>
+                      {/* Instructions */}
+                      <View style={styles.instructionsContainer}>
+                        <Text style={styles.instructionsTitle}>Forgot your password?</Text>
+                        <Text style={styles.instructionsText}>
+                          No worries! Enter your email address and we'll send you a link to reset your password.
+                        </Text>
                       </View>
-                    )}
 
-                    {/* Send Reset Email Button */}
-                    <TouchableOpacity
-                      style={[styles.resetButton, shouldShowLoader && styles.resetButtonDisabled]}
-                      onPress={handleSendResetEmail}
-                      disabled={shouldShowLoader}
-                      activeOpacity={shouldShowLoader ? 1 : 0.7}
-                    >
-                      <Text style={styles.resetButtonText}>Send Reset Link</Text>
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  <>
-                    {/* Success Message */}
-                    <View style={styles.successContainer}>
-                      <Icon name="checkmark-circle" size={60} color="#4CAF50" />
-                      <Text style={styles.successTitle}>Email Sent!</Text>
-                      <Text style={styles.successText}>
-                        We've sent a password reset link to{'\n'}
-                        <Text style={styles.emailText}>{email}</Text>
-                      </Text>
-                      <Text style={styles.successInstructions}>
-                        Please check your email and click the link to reset your password. The link will expire in 1 hour.
-                      </Text>
-                    </View>
+                      {/* Email Input */}
+                      <View style={styles.inputContainer}>
+                        <TextInput
+                          style={styles.input}
+                          placeholder="Email"
+                          placeholderTextColor="#666"
+                          value={email}
+                          onChangeText={setEmail}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          keyboardType="email-address"
+                          returnKeyType="done"
+                          onSubmitEditing={handleSendResetEmail}
+                        />
+                      </View>
 
-                    {/* Action Buttons */}
-                    <View style={styles.actionButtonsContainer}>
-                      <TouchableOpacity
-                        style={styles.resendButton}
-                        onPress={handleResendEmail}
-                      >
-                        <Text style={styles.resendButtonText}>Send Another Email</Text>
-                      </TouchableOpacity>
+                      {/* Error Message */}
+                      {error && (
+                        <View style={styles.errorContainer}>
+                          <Text style={styles.errorText}>{error}</Text>
+                        </View>
+                      )}
 
-                      <TouchableOpacity
-                        style={styles.backToLoginButton}
-                        onPress={handleBackToLogin}
-                      >
-                        <Text style={styles.backToLoginButtonText}>Back to Login</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </>
-                )}
-              </View>
-            </KeyboardAvoidingView>
-          </ImageBackground>
-        </>
-      )}
-    </View>
+                      {/* Buttons Container */}
+                      <View style={styles.buttonsContainer}>
+                        {/* Send Reset Email Button */}
+                        <TouchableOpacity
+                          style={[styles.resetButton, shouldShowLoader && styles.resetButtonDisabled]}
+                          onPress={handleSendResetEmail}
+                          disabled={shouldShowLoader}
+                          activeOpacity={shouldShowLoader ? 1 : 0.7}
+                        >
+                          <View style={styles.resetButtonContent}>
+                            <Text style={styles.resetButtonText}>Send Reset Link</Text>
+                          </View>
+                        </TouchableOpacity>
+
+                        {/* Back to Login Button */}
+                        <TouchableOpacity
+                          style={styles.backToLoginButton}
+                          onPress={handleBackToLogin}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.backToLoginButtonText}>Back to Login</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  ) : (
+                    <>
+                      {/* Success Message */}
+                      <View style={styles.successContainer}>
+                        <Icon name="checkmark-circle" size={60} color="#4CAF50" />
+                        <Text style={styles.successTitle}>Email Sent!</Text>
+                        <Text style={styles.successText}>
+                          We've sent a password reset link to{'\n'}
+                          <Text style={styles.emailText}>{email}</Text>
+                        </Text>
+                        <Text style={styles.successInstructions}>
+                          Please check your email and click the link to reset your password. The link will expire in 1 hour.
+                        </Text>
+                      </View>
+
+                      {/* Action Buttons */}
+                      <View style={styles.actionButtonsContainer}>
+                        <TouchableOpacity
+                          style={styles.resendButton}
+                          onPress={handleResendEmail}
+                        >
+                          <Text style={styles.resendButtonText}>Send Another Email</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.backToLoginButton}
+                          onPress={handleBackToLogin}
+                        >
+                          <Text style={styles.backToLoginButtonText}>Back to Login</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
+                </View>
+              </KeyboardAvoidingView>
+            </ImageBackground>
+          </>
+        )}
+      </View>
+    </TouchableWithoutFeedback>
   );
 };
 
@@ -232,38 +267,21 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'space-between',
   },
-  headerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: height * 0.02,
-    paddingBottom: 10,
-  },
-  backButton: {
-    padding: 8,
-    marginRight: 10,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#ffffff',
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
   logoContainer: {
     alignItems: 'center',
+    marginTop: height * 0.08,
     marginBottom: height * 0.06,
   },
-  logoText: {
-    fontSize: 40,
-    fontWeight: 'bold',
-    color: '#007AFF',
-    // fontFamily is handled by System by default in React Native
-    textAlign: 'center',
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+  logoContainerSmall: {
+    marginTop: height * 0.02,
+    marginBottom: height * 0.01,
+  },
+  logoImage: {
+    width: width * 0.7,
+    height: width * 0.5,
+    maxWidth: 300,
+    maxHeight: 150,
+    marginBottom: 16,
   },
   formContainer: {
     paddingHorizontal: 30,
@@ -271,7 +289,7 @@ const styles = StyleSheet.create({
     paddingTop: 10,
   },
   instructionsContainer: {
-    marginBottom: 30,
+    marginBottom: 25,
     alignItems: 'center',
   },
   instructionsTitle: {
@@ -294,7 +312,8 @@ const styles = StyleSheet.create({
     textShadowRadius: 2,
   },
   inputContainer: {
-    marginBottom: 20,
+    position: 'relative',
+    marginBottom: 16,
   },
   input: {
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
@@ -328,6 +347,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
   },
+  buttonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 10,
+  },
   resetButton: {
     backgroundColor: 'transparent',
     borderRadius: 26,
@@ -345,18 +371,45 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 3,
     elevation: 3,
-    alignSelf: 'center',
-    minWidth: 180,
+    flex: 1,
     minHeight: 56,
   },
   resetButtonDisabled: {
     opacity: 0.6,
     borderColor: 'rgba(255, 255, 255, 0.6)',
   },
+  resetButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   resetButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
+  },
+  resetButtonIcon: {
+    marginLeft: 8,
+  },
+  backToLoginButton: {
+    backgroundColor: 'transparent',
+    borderRadius: 26,
+    paddingVertical: 14,
+    paddingHorizontal: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 3,
+    flex: 1,
+    minHeight: 56,
   },
   successContainer: {
     alignItems: 'center',

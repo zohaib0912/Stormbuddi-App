@@ -58,7 +58,7 @@ const InspectionReport = ({ navigation, route }) => {
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   
   // Use the page loader hook - start with false, only show when screen is focused
-  const { shouldShowLoader, startLoading, stopLoading, resetLoader } = usePageLoader(false);
+  const { shouldShowLoader, startLoading, stopLoading, resetLoader } = usePageLoader(true);
   
   // Get jobId from route params if available
   const jobId = route?.params?.jobId;
@@ -196,7 +196,7 @@ const InspectionReport = ({ navigation, route }) => {
       const data = await response.json();
       
       if (data.success && data.data) {
-        console.log('Projects fetched successfully. Count:', data.data.length);
+        
         setProjects(data.data);
       }
     } catch (error) {
@@ -232,37 +232,56 @@ const InspectionReport = ({ navigation, route }) => {
       const data = await response.json();
       
       if (data.success && data.data) {
-        console.log('Appointments fetched successfully:', data.data);
+       
         
-        const mappedAppointments = data.data.map(appointment => ({
-          id: appointment.id,
-          status: appointment.status,
-          type: appointment.type,
-          title: appointment.title,
-          date: appointment.start_date_time.split(' ')[0],
-          startTime: appointment.start_date_time.split(' ')[1].substring(0, 5),
-          endTime: appointment.end_date_time.split(' ')[1].substring(0, 5),
-          client_name: appointment.client_name,
-          client_email: appointment.client_email,
-          client_phone: appointment.client_phone,
-          location: appointment.location,
-          priority: appointment.priority,
-          project_id: appointment.project_id || appointment.job_id,
-          job_id: appointment.job_id || appointment.project_id,
-          project_title: appointment.project_title,
-          project_status: appointment.project_status,
-          description: appointment.description,
-          is_urgent: appointment.is_urgent,
-          is_all_day: appointment.is_all_day,
-          tags: appointment.tags,
-          time_until_start: appointment.time_until_start,
-          created_at: appointment.created_at,
-          updated_at: appointment.updated_at,
-        }));
+        const mappedAppointments = data.data.map(appointment => {
+          // Ensure type is properly handled - normalize to string
+          const appointmentType = appointment.type || null;
+          console.log('Mapping appointment:', {
+            id: appointment.id,
+            title: appointment.title,
+            type: appointment.type,
+            normalizedType: appointmentType
+          });
+          
+          return {
+            id: appointment.id,
+            status: appointment.status,
+            type: appointmentType, // Keep original type from API
+            title: appointment.title,
+            date: appointment.start_date_time.split(' ')[0],
+            startTime: appointment.start_date_time.split(' ')[1].substring(0, 5),
+            endTime: appointment.end_date_time.split(' ')[1].substring(0, 5),
+            client_name: appointment.client_name,
+            client_email: appointment.client_email,
+            client_phone: appointment.client_phone,
+            location: appointment.location,
+            priority: appointment.priority,
+            project_id: appointment.project_id || appointment.job_id,
+            job_id: appointment.job_id || appointment.project_id,
+            project_title: appointment.project_title,
+            project_status: appointment.project_status,
+            description: appointment.description,
+            is_urgent: appointment.is_urgent,
+            is_all_day: appointment.is_all_day,
+            tags: appointment.tags,
+            time_until_start: appointment.time_until_start,
+            created_at: appointment.created_at,
+            updated_at: appointment.updated_at,
+          };
+        });
+        
+       
+        const inspectionCount = mappedAppointments.filter(a => {
+          const type = a.type?.toLowerCase()?.trim();
+          return type === 'inspection';
+        }).length;
+        console.log('Inspection appointments count:', inspectionCount);
+        console.log('All appointment types:', mappedAppointments.map(a => ({ id: a.id, type: a.type, normalized: a.type?.toLowerCase()?.trim() })));
         
         setAppointments(mappedAppointments);
       } else {
-        console.log('API response structure different, using mock data');
+       
         setAppointments(mockAppointments);
       }
     } catch (err) {
@@ -355,7 +374,7 @@ const InspectionReport = ({ navigation, route }) => {
         url = `https://app.stormbuddi.com/api/mobile/jobs/inspection-reports`;
       }
 
-      console.log('Fetching inspection reports from:', url);
+      
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -370,7 +389,7 @@ const InspectionReport = ({ navigation, route }) => {
         
         // If 404, no reports exist for this job/user - show empty state
         if (response.status === 404) {
-          console.log('No inspection reports found');
+          
           setReports([]);
           setError(null);
           return;
@@ -384,13 +403,11 @@ const InspectionReport = ({ navigation, route }) => {
       // Handle different response structures - API returns { inspection_reports: [...] }
       const reportsData = data.inspection_reports || (data.data?.inspection_reports) || data.data || data.reports || data || [];
       
-      console.log('Success! Full API response:', data);
-      console.log('Inspection reports extracted:', reportsData);
-      console.log('Number of reports:', reportsData.length);
+     
       
       // Group reports by upload session (same date, job_id, and description)
       const groupedReports = groupReportsByUploadSession(reportsData);
-      console.log('Grouped reports:', groupedReports.length, 'groups from', reportsData.length, 'reports');
+      
       
       setReports(groupedReports);
       setError(null);
@@ -494,8 +511,13 @@ const InspectionReport = ({ navigation, route }) => {
     setSelectedAppointment(null);
   };
 
-  const handleAppointmentModalSubmit = (formData) => {
-    fetchAppointments();
+  const handleAppointmentModalSubmit = async (formData) => {
+    // Add a small delay to ensure the API has saved the appointment
+    // before fetching the updated list, then refresh both appointments and reports
+    setTimeout(() => {
+      fetchAppointments();
+      fetchReports(); // Also refresh reports in case a report was created
+    }, 500);
   };
 
   const handleCalendarIconPress = () => {
@@ -505,9 +527,6 @@ const InspectionReport = ({ navigation, route }) => {
   const handleCalendarDateSelect = (date) => {
     setSelectedDate(date);
     setShowCalendarModal(false);
-    if (calendarStripRef.current) {
-      calendarStripRef.current.scrollToDate(date);
-    }
   };
 
   const handleCloseCalendarModal = () => {
@@ -524,7 +543,7 @@ const InspectionReport = ({ navigation, route }) => {
 
   const handleReportPress = (report) => {
     // TODO: Navigate to report details screen
-    console.log('Report pressed:', report);
+    
     // navigation.navigate('InspectionReportDetails', { reportId: report.id });
   };
 
@@ -533,7 +552,7 @@ const InspectionReport = ({ navigation, route }) => {
   };
 
   const handleUploadSubmit = (uploadData) => {
-    console.log('Report uploaded:', uploadData);
+    
     
     // Refresh the reports list
     fetchReports();
@@ -563,42 +582,28 @@ const InspectionReport = ({ navigation, route }) => {
   // Filter appointments for selected date (show all if no date selected)
   // Only show appointments with type "inspection" or "Inspection"
   let filteredAppointments = appointments.filter(appointment => {
-    const appointmentType = appointment.type?.toLowerCase();
+    // Normalize the appointment type - handle null, undefined, and whitespace
+    const appointmentType = appointment.type?.toLowerCase()?.trim();
     console.log('Filtering appointment:', {
       id: appointment.id,
       type: appointment.type,
       typeLowercase: appointmentType,
       matchesInspection: appointmentType === 'inspection'
     });
-    if (appointmentType !== 'inspection') {
-      console.log('Filtered out - not inspection type');
+    
+    // Check if type is inspection (case-insensitive, handle variations)
+    if (!appointmentType || appointmentType !== 'inspection') {
+      console.log('Filtered out - not inspection type:', {
+        appointmentId: appointment.id,
+        originalType: appointment.type,
+        normalizedType: appointmentType
+      });
       return false;
     }
     
-    // Check if there's a report for this appointment's project/job
-    // Convert to string for comparison to handle number/string mismatches
-    const appointmentJobId = appointment.job_id || appointment.project_id;
-    if (appointmentJobId && reports && reports.length > 0) {
-      const appointmentIdStr = String(appointmentJobId);
-      const hasReport = reports.some(report => {
-        // Check multiple possible field names and convert to string for comparison
-        const reportJobId = report.job_id || report.project_id || report.jobId || report.projectId;
-        if (reportJobId && String(reportJobId) === appointmentIdStr) {
-          console.log('Filtering out appointment with existing report:', {
-            appointmentId: appointment.id,
-            appointmentJobId: appointmentJobId,
-            reportJobId: reportJobId,
-            reportId: report.id
-          });
-          return true;
-        }
-        return false;
-      });
-      // If appointment has a report, exclude it (return false)
-      if (hasReport) {
-        return false;
-      }
-    }
+    // Removed: Logic that filtered out appointments with existing reports
+    // This was preventing appointments from showing even when they should be visible
+    // All inspection appointments will now be shown regardless of report status
     
     return true;
   });
@@ -606,15 +611,30 @@ const InspectionReport = ({ navigation, route }) => {
   // Apply date filter
   if (selectedDate) {
     filteredAppointments = filteredAppointments.filter(appointment => {
-      const appointmentDate = new Date(appointment.date);
-      return appointmentDate.toDateString() === selectedDate.toDateString();
+      // Parse date as local date (not UTC) to avoid timezone issues
+      const appointmentDateStr = appointment.date; // Format: YYYY-MM-DD
+      const [year, month, day] = appointmentDateStr.split('-').map(Number);
+      const appointmentDate = new Date(year, month - 1, day); // month is 0-indexed
+      appointmentDate.setHours(0, 0, 0, 0);
+      
+      const selectedDateCopy = new Date(selectedDate);
+      selectedDateCopy.setHours(0, 0, 0, 0);
+      
+      return appointmentDate.getTime() === selectedDateCopy.getTime();
     });
   } else {
     filteredAppointments = filteredAppointments.filter(appointment => {
-      const appointmentDate = new Date(appointment.date);
+      // Parse date as local date (not UTC) to avoid timezone issues
+      const appointmentDateStr = appointment.date; // Format: YYYY-MM-DD
+      const [year, month, day] = appointmentDateStr.split('-').map(Number);
+      const appointmentDate = new Date(year, month - 1, day); // month is 0-indexed
+      appointmentDate.setHours(0, 0, 0, 0);
+      
       const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      return appointmentDate >= today;
+      today.setHours(0, 0, 0, 0); // Reset time to start of day for accurate comparison
+      
+      // Include today and future appointments
+      return appointmentDate.getTime() >= today.getTime();
     });
   }
 

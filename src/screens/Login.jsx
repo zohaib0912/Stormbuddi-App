@@ -3,6 +3,7 @@ import {
   View,
   Text,
   TextInput,
+  Image,
   ImageBackground,
   StyleSheet,
   TouchableOpacity,
@@ -13,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Keyboard,
   Platform,
+  ScrollView,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 
@@ -31,9 +33,31 @@ const Login = ({ navigation }) => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   
   // Use the new page loader hook
   const { shouldShowLoader, startLoading, stopLoading } = usePageLoader(false);
+
+  // Handle keyboard show/hide
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+      }
+    );
+    const keyboardDidHideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+      }
+    );
+
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
+  }, []);
 
   // API call to backend authentication endpoint
   const authenticateUser = async (credentials) => {
@@ -58,7 +82,7 @@ const Login = ({ navigation }) => {
 
       if (!response.ok) {
         // Handle API error responses
-        console.log('Login failed:', data.message || data.error || 'Login failed');
+        
         throw new Error(data.message || data.error || 'Login failed');
       }
 
@@ -76,7 +100,7 @@ const Login = ({ navigation }) => {
       // Handle network errors or other exceptions
       if (err.message.includes('Network request failed') || err.message.includes('fetch')) {
         throw new Error('Unable to connect to server. Please check your internet connection.');
-        console.log('Unable to connect to server. Please check your internet connection.');
+        
       }
       throw new Error(err.message || 'Authentication failed. Please check your credentials.');
     } finally {
@@ -112,15 +136,13 @@ const Login = ({ navigation }) => {
         // Update FCM token in backend after successful login
         try {
           await NotificationService.updateFCMTokenAfterLogin();
-          console.log('FCM token updated after login');
+          
         } catch (error) {
           console.error('Failed to update FCM token after login:', error);
           // Don't fail login if FCM token update fails
         }
         
-        console.log('Login successful:', result);
-        console.log('User data:', result.user);
-        console.log('Access token:', result.token);
+        
         
         // Reset navigation stack to prevent going back to login
         navigation.reset({
@@ -137,6 +159,10 @@ const Login = ({ navigation }) => {
     navigation.navigate('ForgotPassword');
   };
 
+  const handleSignup = () => {
+    navigation.navigate('Signup');
+  };
+
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <View style={styles.container}>
@@ -147,14 +173,13 @@ const Login = ({ navigation }) => {
           visible={shouldShowLoader}
           message="Signing in..."
         />
-        
 
         {/* Only show content when not loading */}
         {!shouldShowLoader && (
           <>
             {/* Background Image with Construction Worker */}
             <ImageBackground
-              source={require('../assets/images/sdf.jpg')}
+              source={require('../assets/images/login.jpg')}
               style={styles.backgroundImage}
               resizeMode="cover"
             >
@@ -164,11 +189,25 @@ const Login = ({ navigation }) => {
               <KeyboardAvoidingView 
                 style={styles.keyboardAvoidingView}
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+                enabled
               >
+                <ScrollView
+                  style={styles.scrollView}
+                  contentContainerStyle={{
+                    paddingBottom: keyboardHeight > 0 ? 20 : 80,
+                  }}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                  bounces={false}
+                >
                 {/* StormBuddi Logo */}
-                <View style={styles.logoContainer}>
-                  <Text style={styles.logoText}>StormBuddi</Text>
+                <View style={[styles.logoContainer, keyboardHeight > 0 && styles.logoContainerSmall]}>
+                  <Image
+                    source={require('../assets/images/logo.png')}
+                    style={styles.logoImage}
+                    resizeMode="contain"
+                  />
                 </View>
 
                 {/* Login Form */}
@@ -233,9 +272,21 @@ const Login = ({ navigation }) => {
                     disabled={shouldShowLoader}
                     activeOpacity={shouldShowLoader ? 1 : 0.7}
                   >
-                    <Text style={styles.loginButtonText}>Login</Text>
+                    <View style={styles.loginButtonContent}>
+                      <Text style={styles.loginButtonText}>Login</Text>
+                      <Icon name="arrow-forward" size={20} color="#ffffff" style={styles.loginButtonIcon} />
+                    </View>
                   </TouchableOpacity>
+
+                  {/* Sign Up Link */}
+                  <View style={styles.signupContainer}>
+                    <Text style={styles.signupText}>Don't have an account? </Text>
+                    <TouchableOpacity onPress={handleSignup}>
+                      <Text style={styles.signupLink}>Sign Up</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
+                </ScrollView>
               </KeyboardAvoidingView>
             </ImageBackground>
           </>
@@ -265,26 +316,47 @@ const styles = StyleSheet.create({
   },
   keyboardAvoidingView: {
     flex: 1,
-    justifyContent: 'space-between',
+  },
+  scrollView: {
+    flex: 1,
   },
   logoContainer: {
     alignItems: 'center',
-    marginTop: height * 0.06,
-    marginBottom: height * 0.08,
+    marginTop: height * 0.12,
+    marginBottom: height * 0.06,
   },
-  logoText: {
-    fontSize: 40,
-    fontWeight: 'bold',
-    color: colors.primary,
-    // fontFamily is handled by System by default in React Native
-    textAlign: 'center',
+  logoContainerSmall: {
+    marginTop: height * 0.04,
+    marginBottom: height * 0.02,
+  },
+  logoImage: {
+    width: width * 0.7,
+    height: width * 0.5,
+    maxWidth: 300,
+    maxHeight: 150,
+    marginBottom: 16,
+  },
+  welcomeText: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#ffffff',
+    marginTop: 12,
+    textShadowColor: 'rgba(0, 0, 0, 0.4)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+    letterSpacing: 0.5,
+  },
+  taglineText: {
+    fontSize: 16,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.9)',
+    marginTop: 6,
     textShadowColor: 'rgba(0, 0, 0, 0.3)',
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    textShadowRadius: 3,
   },
   formContainer: {
     paddingHorizontal: 30,
-    paddingBottom: 80,
     paddingTop: 10,
   },
   inputContainer: {
@@ -367,10 +439,34 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     borderColor: 'rgba(255, 255, 255, 0.6)',
   },
+  loginButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   loginButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
+  },
+  loginButtonIcon: {
+    marginLeft: 8,
+  },
+  signupContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  signupText: {
+    color: '#ffffff',
+    fontSize: 14,
+  },
+  signupLink: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
 });
 

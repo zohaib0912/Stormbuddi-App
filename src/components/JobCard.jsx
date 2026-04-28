@@ -17,12 +17,6 @@ const JobCard = ({
   status,
   onPress
 }) => {
-  // Debug logging to check props
-  console.log('JobCard props:', {
-    title,
-    assignedTo,
-    status
-  });
   // Function to get status button style based on status
   const getStatusButtonStyle = (status) => {
     const normalizedStatus = (status || '').toLowerCase().replace(/\s+/g, '-');

@@ -38,6 +38,7 @@ import usePageLoader from '../hooks/usePageLoader';
 import { colors } from '../theme/colors';
 import { useToast } from '../contexts/ToastContext';
 import RNFS from 'react-native-fs';
+import ReactNativeBlobUtil from 'react-native-blob-util';
 
 // Safe import for DocumentPicker and ImageCropPicker
 let DocumentPicker;
@@ -49,17 +50,17 @@ try {
     pick: docPicker.pick,
     types: docPicker.types,
   };
-  console.log('DocumentPicker loaded successfully');
+  
 } catch (error) {
-  console.log('DocumentPicker not available:', error.message);
+  
   DocumentPicker = null;
 }
 
 try {
   ImageCropPicker = require('react-native-image-crop-picker').default;
-  console.log('ImageCropPicker loaded successfully');
+ 
 } catch (error) {
-  console.log('ImageCropPicker not available:', error.message);
+  
   ImageCropPicker = null;
 }
 
@@ -103,6 +104,8 @@ const JobDetails = ({ navigation, route }) => {
   const [measurements, setMeasurements] = useState([]);
 
   const [proposals, setProposals] = useState([]);
+
+  const [contracts, setContracts] = useState([]);
 
   const [workOrders, setWorkOrders] = useState([]);
 
@@ -148,15 +151,11 @@ const JobDetails = ({ navigation, route }) => {
       const data = await response.json();
       
       if (data.success && data.data) {
-        console.log('Job details fetched successfully:', data.data);
+        
         
         // Map API response to job details
         const jobData = data.data;
-        console.log('Job data:', jobData);
-        console.log('Invoices from API:', jobData.invoices);
-        console.log('Additional files from API:', jobData.additional_files);
-        console.log('File uploads from API:', jobData.file_uploads);
-        console.log('Work orders from API:', jobData.work_orders);
+       
         
         // Debug: Check file structure if additional_files exist
         if (jobData.additional_files && jobData.additional_files.length > 0) {
@@ -330,6 +329,64 @@ const JobDetails = ({ navigation, route }) => {
           setProposals(proposalFiles);
         }
         
+        // Handle contracts - check both contracts array and additional_files
+        const contractFiles = [];
+        
+        // Check contracts array (for actual contracts)
+        if (jobData.contracts && jobData.contracts.length > 0) {
+          jobData.contracts.forEach(contract => {
+            contractFiles.push({
+              id: contract.id,
+              fileName: contract.title || `Contract #${contract.id}`,
+              fileType: 'PDF',
+              url: contract.file_url || contract.url
+            });
+          });
+        }
+        
+        // Also check additional_files for uploaded contract files
+        // Backend stores contracts with category 'contract'
+        if (jobData.additional_files && jobData.additional_files.length > 0) {
+          const contractUploads = jobData.additional_files.filter(file => 
+            file.category === 'contract' || file.file_category === 'contract' ||
+            file.section === 'contract' || file.upload_type === 'contract' ||
+            file.type === 'contract' || file.storage_path?.includes('contracts')
+          );
+          
+          contractUploads.forEach(file => {
+            contractFiles.push({
+              id: file.id,
+              fileName: file.original_name || file.file_name || `Contract #${file.id}`,
+              fileType: file.file_type ? file.file_type.split('/')[1]?.toUpperCase() : 'PDF',
+              url: file.url || file.file_url,
+              file_type: file.file_type
+            });
+          });
+        }
+        
+        // Also check file_uploads array (backend might store contracts there)
+        if (jobData.file_uploads && jobData.file_uploads.length > 0) {
+          const contractUploadFiles = jobData.file_uploads.filter(file => 
+            file.category === 'contract' || file.file_category === 'contract' ||
+            file.upload_type === 'contract' || file.type === 'contract' ||
+            file.storage_path?.includes('contracts')
+          );
+          
+          contractUploadFiles.forEach(file => {
+            contractFiles.push({
+              id: file.id,
+              fileName: file.original_name || file.file_name || `Contract #${file.id}`,
+              fileType: file.file_type ? file.file_type.split('/')[1]?.toUpperCase() : 'PDF',
+              url: file.url || file.file_url,
+              file_type: file.file_type
+            });
+          });
+        }
+        
+        if (contractFiles.length > 0) {
+          setContracts(contractFiles);
+        }
+        
         if (jobData.work_orders && jobData.work_orders.length > 0) {
           const mappedWorkOrders = jobData.work_orders.map(file => ({
             id: file.id,
@@ -471,7 +528,7 @@ const JobDetails = ({ navigation, route }) => {
           }
         }
       } else {
-        console.log('API response structure different, using existing data');
+        
       }
     } catch (err) {
       console.error('Job details fetch error:', err);
@@ -479,7 +536,7 @@ const JobDetails = ({ navigation, route }) => {
       // Handle different error types
       if (err.message.includes('404')) {
         setError('Job details not found.');
-        console.log('Job details API not implemented yet, using existing data');
+        
       } else if (err.message.includes('500')) {
         setError('Server error. Please try again later.');
       } else {
@@ -532,6 +589,8 @@ const JobDetails = ({ navigation, route }) => {
       'measurement': 'Measurement',
       'proposals': 'Proposal',
       'proposal': 'Proposal',
+      'contracts': 'Contract',
+      'contract': 'Contract',
       'invoices': 'Invoice',
       'invoice': 'Invoice',
       'workOrders': 'Work Order',
@@ -575,14 +634,11 @@ const JobDetails = ({ navigation, route }) => {
         formData.append('custom_file_name', customFileName);
       }
 
-      console.log('Uploading document:', { fileName, fileType, apiSection, originalSection, jobId: project?.id, customFileName });
-      console.log('API Section mapping:', { section: originalSection, apiSection });
-      console.log('FormData created:', formData);
+      
 
       // Make API call to upload document
       const apiUrl = `https://app.stormbuddi.com/api/mobile/jobs/${project?.id}/files/${apiSection}`;
-      console.log('API URL:', apiUrl);
-      console.log('File info:', { fileName, fileType, uri: fileUri });
+      
       
       // Test network connectivity first
       try {
@@ -593,9 +649,9 @@ const JobDetails = ({ navigation, route }) => {
             'Authorization': `Bearer ${token}`,
           },
         });
-        console.log('Network test response status:', testResponse.status);
+       
       } catch (testError) {
-        console.log('Network test failed:', testError.message);
+        
       }
       
       const response = await fetch(apiUrl, {
@@ -615,19 +671,23 @@ const JobDetails = ({ navigation, route }) => {
       }
 
       const result = await response.json();
-      console.log('Upload API Success Response:', result);
-      console.log('Uploaded file data:', result.data);
+      
 
       if (result.success) {
-        // Use custom_file_name from response if available, otherwise use the name we sent
-        const displayFileName = result.data?.custom_file_name || result.data?.custom_name || finalFileName;
-        
-        // Add the uploaded file to the appropriate section
+        // Backend returns files under data.files[]; support legacy flat data too
+        const uploaded = result.data?.files?.[0] ?? result.data;
+        const displayFileName =
+          uploaded?.custom_file_name ||
+          uploaded?.custom_name ||
+          result.data?.custom_file_name ||
+          result.data?.custom_name ||
+          finalFileName;
+
         const newFile = {
-          id: result.data?.id || Date.now(),
-          fileName: displayFileName, // Use custom name for display
+          id: uploaded?.id || result.data?.id || Date.now(),
+          fileName: displayFileName,
           fileType: fileType.split('/')[1]?.toUpperCase() || 'PDF',
-          url: result.data?.url || result.data?.file_url,
+          url: uploaded?.url || uploaded?.file_url || result.data?.url || result.data?.file_url,
         };
 
         // Update the appropriate section based on the originalSection or apiSection
@@ -649,6 +709,14 @@ const JobDetails = ({ navigation, route }) => {
               fetchJobDetails(project?.id);
             }, 1000);
             break;
+          case 'contracts':
+          case 'contract':
+            setContracts(prev => [...prev, newFile]);
+            // Refresh job details to get latest data from database
+            setTimeout(() => {
+              fetchJobDetails(project?.id);
+            }, 1000);
+            break;
           case 'invoices':
           case 'invoice':
             setInvoices(prev => [...prev, newFile]);
@@ -663,14 +731,14 @@ const JobDetails = ({ navigation, route }) => {
             break;
           case 'beforeImages':
             setBeforeImages(prev => [...prev, {
-              id: result.data?.id || Date.now(),
+              id: uploaded?.id || result.data?.id || Date.now(),
               uri: fileUri,
               name: displayFileName,
             }]);
             break;
           case 'afterImages':
             setAfterImages(prev => [...prev, {
-              id: result.data?.id || Date.now(),
+              id: uploaded?.id || result.data?.id || Date.now(),
               uri: fileUri,
               name: displayFileName,
             }]);
@@ -679,7 +747,7 @@ const JobDetails = ({ navigation, route }) => {
           case 'fileupload':
           default:
             setDocuments(prev => [...prev, newFile]);
-            console.log('Updated documents for section:', updateSection);
+            
         }
 
         // Show success toast with section name
@@ -724,6 +792,7 @@ const JobDetails = ({ navigation, route }) => {
       'inspectionReports': 'inspectionReport',
       'measurements': 'measurement',
       'proposals': 'proposal',
+      'contracts': 'contract',
       'invoices': 'invoice',
       'workOrders': 'workOrder',
       'documents': 'fileupload',
@@ -892,28 +961,6 @@ const JobDetails = ({ navigation, route }) => {
       return;
     }
 
-    if (Platform.OS === 'android') {
-      let permissions = [];
-      if (Platform.Version >= 33) {
-        permissions = [PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES];
-      } else {
-        permissions = [
-          PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
-          PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
-        ];
-      }
-
-      const granted = await PermissionsAndroid.requestMultiple(permissions);
-      const allGranted = Object.values(granted).every(
-        status => status === PermissionsAndroid.RESULTS.GRANTED
-      );
-
-      if (!allGranted) {
-        showError('Permission Denied. Storage permission is required to access images.');
-        return;
-      }
-    }
-
     try {
       const image = await ImageCropPicker.openPicker({
         width: 2000,
@@ -921,6 +968,7 @@ const JobDetails = ({ navigation, route }) => {
         cropping: false,
         includeBase64: false,
         compressImageQuality: 0.8,
+        androidPhotoPicker: true,
       });
 
       const apiSection = getApiSection(section);
@@ -1114,6 +1162,17 @@ const JobDetails = ({ navigation, route }) => {
           uri: f.url || f.file_url,
           name: f.fileName || f.original_name
         }));
+      case 'contracts':
+      case 'contract':
+        return contracts.filter(f => {
+          const type = f.fileType || (f.file_type ? f.file_type.split('/')[1]?.toLowerCase() : '');
+          const mime = f.file_type || f.fileType || '';
+          return mime.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(type?.toLowerCase());
+        }).map(f => ({
+          id: f.id,
+          uri: f.url || f.file_url,
+          name: f.fileName || f.original_name
+        }));
       case 'invoices':
       case 'invoice':
         return invoices.filter(f => {
@@ -1206,7 +1265,7 @@ const JobDetails = ({ navigation, route }) => {
       const fileType = file.fileType || (file.file_type ? file.file_type.split('/')[1]?.toLowerCase() : 'unknown');
       const mimeType = file.file_type || file.fileType || '';
 
-      console.log('Opening file:', { fileName, fileType, mimeType, fileUrl, section });
+      
 
       // Check if it's an image
       const isImage = mimeType.startsWith('image/') || 
@@ -1282,28 +1341,24 @@ const JobDetails = ({ navigation, route }) => {
         // Open the downloaded file locally
         const fileExists = await RNFS.exists(tempFilePath);
         if (fileExists) {
-          // Use file:// protocol for local files
-          const localFileUrl = Platform.OS === 'android' 
-            ? `file://${tempFilePath}`
-            : tempFilePath;
-          
+          const openMime =
+            mimeType && mimeType.includes('/')
+              ? mimeType
+              : String(fileExtension).toLowerCase() === 'pdf'
+                ? 'application/pdf'
+                : 'application/octet-stream';
+
           try {
-            const canOpenLocal = await Linking.canOpenURL(localFileUrl);
-            if (canOpenLocal) {
-              await Linking.openURL(localFileUrl);
+            if (Platform.OS === 'android') {
+              // file:// URIs are blocked across apps on modern Android; use FileProvider-backed intent
+              await ReactNativeBlobUtil.android.actionViewIntent(tempFilePath, openMime);
             } else {
-              // For Android, try content:// URI or Share
-              if (Platform.OS === 'android') {
-                // Try using Share to open file
-                const Share = require('react-native').Share;
-                try {
-                  await Share.share({
-                    url: localFileUrl,
-                    title: fileName,
-                  });
-                } catch (shareError) {
-                  showError('Unable to open file. Please download it instead.');
-                }
+              const localFileUrl = tempFilePath.startsWith('file://')
+                ? tempFilePath
+                : `file://${tempFilePath}`;
+              const canOpenLocal = await Linking.canOpenURL(localFileUrl);
+              if (canOpenLocal) {
+                await Linking.openURL(localFileUrl);
               } else {
                 showError('Unable to open file. Please download it instead.');
               }
@@ -1428,7 +1483,7 @@ const JobDetails = ({ navigation, route }) => {
       
       showSuccess(`${fileName} downloaded successfully!\nSaved to: ${locationMessage}`);
       
-      console.log('File downloaded successfully:', filePath, 'Size:', fileStat.size, 'bytes');
+      
     } catch (error) {
       console.error('Download error:', error);
       showError(`Download failed: ${error.message || 'Unable to download file'}`);
@@ -1446,7 +1501,7 @@ const JobDetails = ({ navigation, route }) => {
           style: 'destructive',
           onPress: () => {
             // TODO: Implement file deletion logic
-            console.log(`Delete file ${fileId} from ${section}`);
+            
           }
         }
       ]
@@ -1479,7 +1534,7 @@ const JobDetails = ({ navigation, route }) => {
   };
 
   const handleInspectionReportSubmit = async (uploadData) => {
-    console.log('Inspection report uploaded:', uploadData);
+    
     
     // Modal already shows its own toast, so we don't need to show another one here
     // Just close the modal and refresh data
@@ -1534,7 +1589,7 @@ const JobDetails = ({ navigation, route }) => {
         description: jobDetails.description,
       };
 
-      console.log('Sending job description update:', updateData);
+      
 
       const response = await fetch(`https://app.stormbuddi.com/api/mobile/jobs/${project?.id}/description`, {
         method: 'PUT',
@@ -1739,12 +1794,15 @@ const JobDetails = ({ navigation, route }) => {
     }
     
     // Default rendering for other sections
-    // Show toast message for proposals instead of allowing upload
+    // Show toast message for proposals and contracts instead of allowing upload
     const isProposalSection = sectionName === 'proposals';
+    const isContractSection = sectionName === 'contracts';
     
     const handleUploadPress = () => {
       if (isProposalSection) {
         showInfo('Proposal can only be uploaded from Web CRM');
+      } else if (isContractSection) {
+        showInfo('Contract can only be uploaded from Web CRM');
       } else {
         handleFileUpload(sectionName, null);
       }
@@ -1915,6 +1973,9 @@ const JobDetails = ({ navigation, route }) => {
 
         {/* Proposals Section */}
         {renderFileSection('Proposals', proposals, 'proposals')}
+
+        {/* Contract Section */}
+        {renderFileSection('Contract', contracts, 'contracts')}
 
         {/* Work Order Section */}
         <View ref={(ref) => sectionRefs.current['workOrder'] = ref}>

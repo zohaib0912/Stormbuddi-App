@@ -36,7 +36,7 @@ const Settings = () => {
   };
 
   const handleSettingPress = (setting) => {
-    console.log(`${setting} pressed`);
+    
     if (setting === 'Account') {
       navigation.navigate('Profile');
     } else if (setting === 'Notifications') {
@@ -157,7 +157,7 @@ const Settings = () => {
 
       {/* App Version */}
       <View style={[styles.versionContainer, { paddingBottom: 20 }]}>
-        <Text style={styles.versionText}>App version 1.0.0</Text>
+        <Text style={styles.versionText}>App version 1.0.6</Text>
       </View>
 
       {/* Notification Settings Modal */}

@@ -15,16 +15,16 @@
  * - Data structure is already compatible with typical REST API responses
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   StatusBar,
-  ScrollView,
   TouchableOpacity,
   TextInput,
   FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -43,6 +43,7 @@ import NotificationListModal from '../components/NotificationListModal';
 import { getToken } from '../utils/tokenStorage';
 import usePageLoader from '../hooks/usePageLoader';
 import { colors } from '../theme/colors';
+import { dedupeById } from '../utils/dedupeById';
 
 
 // Mock data structure - this will be replaced with API calls
@@ -116,6 +117,63 @@ const mockLeads = [
 
 ];
 
+const LEADS_PER_PAGE = 20;
+const LEADS_API = 'https://app.stormbuddi.com/api/mobile/leads';
+
+function normalizeLeadsPayload(data) {
+  if (!data?.success) {
+    return { rows: [], meta: {} };
+  }
+  const raw = data.data;
+  if (Array.isArray(raw)) {
+    return { rows: raw, meta: data.meta || {} };
+  }
+  if (raw && typeof raw === 'object' && Array.isArray(raw.data)) {
+    return {
+      rows: raw.data,
+      meta: { ...(typeof data.meta === 'object' && data.meta ? data.meta : {}), ...(raw.meta || {}) },
+    };
+  }
+  return { rows: [], meta: {} };
+}
+
+function mapApiLeadToCard(lead) {
+  return {
+    id: lead.id,
+    client_id: lead.client_id ?? lead.customer_id ?? null,
+    client_name: (() => {
+      const name = lead.client_name ?? lead.customer_name ?? lead.client ?? '';
+      if (!name || name === 'None' || name === 'N/A' || name === 'Unknown') return '';
+      return name;
+    })(),
+    address: lead.address || 'No address',
+    city: lead.address ? lead.address.split(',')[1]?.trim() || 'Unknown' : 'Unknown',
+    state: lead.address ? lead.address.split(',')[2]?.trim().split(' ')[0] || 'Unknown' : 'Unknown',
+    zipCode: lead.zipcode !== 'N/A' ? lead.zipcode : 'Unknown',
+    propertyType: 'Residential',
+    roofType: 'Unknown',
+    damageType: 'Unknown',
+    estimatedValue: 15000,
+    status: lead.status,
+    priority:
+      lead.status === 'New' ? 'high' : lead.status === 'Open' ? 'medium' : 'low',
+    source: lead.source || 'Unknown',
+    contactInfo: {
+      name: lead.client_name || 'Unknown',
+      phone: 'N/A',
+      email: 'N/A',
+    },
+    lastUpdated: lead.updated_at,
+    timeInStage: lead.time_in_stage || 'Unknown',
+    notes: `Assigned to: ${lead.assigned_to || 'None'}. Project ID: ${lead.project_id || 'None'}`,
+    project_id: lead.project_id,
+    assigned_to: lead.assigned_to,
+    proposals_count: lead.proposals_count,
+    schedules_count: lead.schedules_count,
+    created_at: lead.created_at,
+  };
+}
+
 const Leads = ({ navigation, route }) => {
   const insets = useSafeAreaInsets();
   const [leads, setLeads] = useState([]);
@@ -131,9 +189,20 @@ const Leads = ({ navigation, route }) => {
   const [selectedCustomerName, setSelectedCustomerName] = useState('');
   const [kpisData, setKpisData] = useState(null);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
-  
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMoreLeads, setHasMoreLeads] = useState(true);
+
+  const leadsPageRef = useRef(1);
+  const loadMoreLockRef = useRef(false);
+  const initialLoadDoneRef = useRef(false);
+  const hasMoreLeadsRef = useRef(true);
+
   // Use the new page loader hook
   const { shouldShowLoader, startLoading, stopLoading } = usePageLoader(true);
+
+  useEffect(() => {
+    hasMoreLeadsRef.current = hasMoreLeads;
+  }, [hasMoreLeads]);
 
   // Handle route parameters for filtering
   useEffect(() => {
@@ -157,91 +226,109 @@ const Leads = ({ navigation, route }) => {
     }
   }, [route?.params?.filterLabel, navigation]);
 
-  // Fetch leads from backend API
+  const fetchLeadsPage = async (page, { append }) => {
+    const token = await getToken();
+    if (!token) {
+      throw new Error('No authentication token found. Please login again.');
+    }
+
+    const url = `${LEADS_API}?page=${page}&per_page=${LEADS_PER_PAGE}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error(data.message || 'Invalid leads response');
+    }
+
+    const { rows, meta } = normalizeLeadsPayload(data);
+    const mapped = dedupeById(rows.map(mapApiLeadToCard));
+
+    const hasMore =
+      meta.has_more === true
+        ? true
+        : meta.has_more === false
+          ? false
+          : mapped.length >= LEADS_PER_PAGE;
+
+    if (append) {
+      setLeads((prev) => {
+        const seen = new Set(prev.map((l) => String(l.id)));
+        const merged = [...prev];
+        for (const l of mapped) {
+          const key = String(l.id);
+          if (!seen.has(key)) {
+            seen.add(key);
+            merged.push(l);
+          }
+        }
+        return merged;
+      });
+    } else {
+      setLeads(mapped);
+    }
+
+    leadsPageRef.current = page;
+    setHasMoreLeads(hasMore);
+    hasMoreLeadsRef.current = hasMore;
+  };
+
   const fetchLeads = async () => {
+    initialLoadDoneRef.current = false;
+    loadMoreLockRef.current = false;
+    leadsPageRef.current = 1;
+    setHasMoreLeads(true);
+    hasMoreLeadsRef.current = true;
     startLoading();
     setError(null);
-    
+
     try {
-      // Get stored token
-      const token = await getToken();
-
-      
-      
-      if (!token) {
-        throw new Error('No authentication token found. Please login again.');
-      }
-      
-      const response = await fetch('https://app.stormbuddi.com/api/mobile/leads', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      if (data.success && data.data) {
-        console.log('Leads fetched successfully:', data.data);
-        
-        // Map API response to match LeadCard expected format
-        const mappedLeads = data.data.map(lead => ({
-          id: lead.id,
-          // Expose client fields for JobModal
-          client_id: (lead.client_id ?? lead.customer_id ?? null),
-          client_name: (() => {
-            const name = (lead.client_name ?? lead.customer_name ?? lead.client ?? '');
-            if (!name || name === 'None' || name === 'N/A' || name === 'Unknown') return '';
-            return name;
-          })(),
-          address: lead.address || 'No address',
-          city: lead.address ? lead.address.split(',')[1]?.trim() || 'Unknown' : 'Unknown',
-          state: lead.address ? lead.address.split(',')[2]?.trim().split(' ')[0] || 'Unknown' : 'Unknown',
-          zipCode: lead.zipcode !== 'N/A' ? lead.zipcode : 'Unknown',
-          propertyType: 'Residential', // Default value, could be enhanced
-          roofType: 'Unknown', // Default value, could be enhanced
-          damageType: 'Unknown', // Default value, could be enhanced
-          estimatedValue: 15000, // Default value, could be enhanced
-          status: lead.status, // Preserve backend status as-is for display
-          priority: lead.status === 'New' ? 'high' : 
-                    lead.status === 'Open' ? 'medium' : 'low',
-          source: lead.source || 'Unknown',
-          contactInfo: {
-            name: lead.client_name || 'Unknown',
-            phone: 'N/A', // Default value, could be enhanced
-            email: 'N/A', // Default value, could be enhanced
-          },
-          lastUpdated: lead.updated_at,
-          timeInStage: lead.time_in_stage || 'Unknown',
-          notes: `Assigned to: ${lead.assigned_to || 'None'}. Project ID: ${lead.project_id || 'None'}`,
-          // Additional fields from API that might be useful
-          project_id: lead.project_id,
-          assigned_to: lead.assigned_to,
-          proposals_count: lead.proposals_count,
-          schedules_count: lead.schedules_count,
-          created_at: lead.created_at,
-        }));
-        
-        setLeads(mappedLeads);
-      } else {
-        // Fallback to mock data if API structure is different
-        console.log('API response structure different, using mock data');
-        setLeads(mockLeads);
-      }
+      await fetchLeadsPage(1, { append: false });
+      initialLoadDoneRef.current = true;
     } catch (err) {
       console.error('Leads fetch error:', err);
       setError('Failed to load leads. Using offline data.');
-      // Fallback to mock data on error
       setLeads(mockLeads);
+      setHasMoreLeads(false);
+      hasMoreLeadsRef.current = false;
     } finally {
       stopLoading();
+    }
+  };
+
+  const loadMoreLeads = async () => {
+    if (
+      !initialLoadDoneRef.current ||
+      loadMoreLockRef.current ||
+      !hasMoreLeadsRef.current ||
+      loadingMore
+    ) {
+      return;
+    }
+    loadMoreLockRef.current = true;
+    setLoadingMore(true);
+    const nextPage = leadsPageRef.current + 1;
+    try {
+      await fetchLeadsPage(nextPage, { append: true });
+    } catch (err) {
+      console.error('Leads load more error:', err);
+      setHasMoreLeads(false);
+      hasMoreLeadsRef.current = false;
+    } finally {
+      loadMoreLockRef.current = false;
+      setLoadingMore(false);
     }
   };
 
@@ -271,7 +358,7 @@ const Leads = ({ navigation, route }) => {
       const data = await response.json();
       
       if (data.success && data.data) {
-        console.log('KPIs fetched successfully:', data.data);
+        
         setKpisData(data.data);
       }
     } catch (err) {
@@ -336,9 +423,13 @@ const Leads = ({ navigation, route }) => {
 
   const hasActiveFilters = statusFilter !== 'all';
 
-  // Calculate metrics using KPIs data
-  const totalLeads = leads.length;
-  const unactionedLeadsCount = kpisData ? kpisData.unactioned_leads : 0;
+  // Metrics from KPIs (same source as Dashboard/portal). List may be paginated, so don't use leads.length for total.
+  const unactionedLeadsCount = kpisData ? (kpisData.unactioned_leads || 0) : 0;
+  const actionedLeadsCount = kpisData ? (kpisData.actioned_leads || 0) : 0;
+  const totalLeads =
+    kpisData != null
+      ? unactionedLeadsCount + actionedLeadsCount
+      : leads.length;
 
   const handleMetricPress = (metricType) => {
     switch (metricType) {
@@ -349,7 +440,7 @@ const Leads = ({ navigation, route }) => {
         setStatusFilter('new');
         break;
       default:
-        console.log('Unknown metric pressed:', metricType);
+        
     }
   };
 
@@ -388,7 +479,7 @@ const Leads = ({ navigation, route }) => {
   };
 
   const handleJobSubmit = (jobData) => {
-    console.log('Job created:', jobData);
+    
     
     // Refresh the leads list to show any updates
     fetchLeads();
@@ -405,7 +496,7 @@ const Leads = ({ navigation, route }) => {
   };
 
   const handleCreateLeadSubmit = (leadData) => {
-    console.log('Lead created:', leadData);
+    
     
     // Refresh the leads list to show the newly created lead
     fetchLeads();
@@ -427,7 +518,8 @@ const Leads = ({ navigation, route }) => {
   );
 
   // Key extractor for FlatList
-  const keyExtractor = (item) => item.id.toString();
+  const keyExtractor = (item, index) =>
+    item.id != null ? String(item.id) : `lead-${index}`;
 
   const handleCloseCreateLeadModal = () => {
     setShowCreateLeadModal(false);
@@ -435,7 +527,7 @@ const Leads = ({ navigation, route }) => {
 
   const handleLeadPress = (lead) => {
     // TODO: Navigate to lead detail screen
-    console.log('Lead pressed:', lead.id);
+   
   };
 
 
@@ -479,7 +571,7 @@ const Leads = ({ navigation, route }) => {
             <View style={styles.listHeader}>
               {/* Screen Title */}
               <View style={styles.titleContainer}>
-                <Text style={styles.screenTitle}>Leads</Text>
+                <Text style={styles.screenTitle}>Lead</Text>
               </View>
 
               {/* Search and Filters */}
@@ -586,6 +678,19 @@ const Leads = ({ navigation, route }) => {
               </Text>
             </View>
           )}
+          onEndReached={() => {
+            if (hasMoreLeads && !loadingMore) {
+              loadMoreLeads();
+            }
+          }}
+          onEndReachedThreshold={0.35}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={styles.listFooterLoader}>
+                <ActivityIndicator size="small" color={colors.primary} />
+              </View>
+            ) : null
+          }
         />
 
         <FloatingActionButton
@@ -642,6 +747,11 @@ const styles = StyleSheet.create({
   },
   listHeader: {
     paddingBottom: 20,
+  },
+  listFooterLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   titleContainer: {
     marginHorizontal: 0,

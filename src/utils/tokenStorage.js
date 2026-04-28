@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { DASHBOARD_CACHE_STORAGE_KEY } from './dashboardCache';
 
 const TOKEN_KEY = 'user_token';
 const USER_DATA_KEY = 'user_data';
@@ -73,7 +74,7 @@ export const setNotificationPermissionRequested = async () => {
 // Note: Notification permission flag is NOT cleared so permission is only asked once ever
 export const clearAuthData = async () => {
   try {
-    await AsyncStorage.multiRemove([TOKEN_KEY, USER_DATA_KEY]);
+    await AsyncStorage.multiRemove([TOKEN_KEY, USER_DATA_KEY, DASHBOARD_CACHE_STORAGE_KEY]);
     console.log('Authentication data cleared successfully');
   } catch (error) {
     console.error('Error clearing authentication data:', error);

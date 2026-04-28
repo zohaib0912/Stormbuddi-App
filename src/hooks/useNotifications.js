@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import messaging from '@react-native-firebase/messaging';
+import { getMessaging, hasPermission, AuthorizationStatus } from '@react-native-firebase/messaging';
 import NotificationService from '../services/NotificationService';
 
 const useNotifications = () => {
@@ -16,9 +16,9 @@ const useNotifications = () => {
       setLoading(true);
       
       // Check if permission is granted first
-      const authStatus = await messaging().hasPermission();
-      const granted = authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
-                     authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+      const authStatus = await hasPermission(getMessaging());
+      const granted = authStatus === AuthorizationStatus.AUTHORIZED ||
+                     authStatus === AuthorizationStatus.PROVISIONAL;
       setIsPermissionGranted(granted);
 
       // Only get FCM token if permission is granted

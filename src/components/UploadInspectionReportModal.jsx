@@ -38,7 +38,7 @@ let ImageCropPicker = null;
 
 try {
   ImageCropPicker = require('react-native-image-crop-picker').default;
-  console.log('ImageCropPicker loaded successfully');
+  
 } catch (error) {
   console.warn('ImageCropPicker not available:', error.message);
 }
@@ -52,7 +52,7 @@ try {
     pick: docPicker.pick,
     types: docPicker.types,
   };
-  console.log('DocumentPicker loaded successfully');
+  
 } catch (error) {
   console.warn('DocumentPicker not available:', error.message);
 }
@@ -160,10 +160,10 @@ const UploadInspectionReportModal = ({
       const data = await response.json();
       
       if (data.success && data.data) {
-        console.log('Projects fetched for inspection report upload. Count:', data.data.length);
+        
         setProjects(data.data);
       } else {
-        console.log('Failed to fetch projects:', data);
+        
         setProjects([]);
       }
     } catch (error) {
@@ -324,41 +324,6 @@ const UploadInspectionReportModal = ({
     setCustomFileNameInput('');
   };
 
-  // Request storage permission for Android
-  const requestStoragePermission = async () => {
-    if (Platform.OS !== 'android') {
-      return true;
-    }
-
-    try {
-      let permissions = [];
-      
-      if (Platform.Version >= 33) {
-        // Android 13+ uses granular permissions
-        permissions = [
-          PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES,
-        ];
-      } else {
-        permissions = [
-          PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
-          PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
-        ];
-      }
-
-      const granted = await PermissionsAndroid.requestMultiple(permissions);
-      
-      // Check if all permissions were granted
-      const allGranted = Object.values(granted).every(
-        status => status === PermissionsAndroid.RESULTS.GRANTED
-      );
-      
-      return allGranted;
-    } catch (err) {
-      console.warn('Storage permission error:', err);
-      return false;
-    }
-  };
-
   const takePicture = async () => {
     if (!ImageCropPicker) {
       showError('Camera not available. ImageCropPicker library is not installed.');
@@ -383,7 +348,7 @@ const UploadInspectionReportModal = ({
         compressImageQuality: 0.8,
       });
       
-      console.log('Photo taken successfully:', image);
+      
       
       const defaultFileName = image.filename || `photo_${Date.now()}.jpg`;
       
@@ -431,7 +396,7 @@ const UploadInspectionReportModal = ({
         error.code === 'E_PICKER_CANCELLED';
       
       if (!isCancel) {
-        console.log('Camera error:', error);
+        
         showError('Failed to launch camera. Please try again.');
       }
     }
@@ -443,15 +408,6 @@ const UploadInspectionReportModal = ({
       return;
     }
 
-    // Request storage permission on Android
-    if (Platform.OS === 'android') {
-      const hasPermission = await requestStoragePermission();
-      if (!hasPermission) {
-        showError('Permission Denied. Storage permission is required to access images.');
-        return;
-      }
-    }
-
     try {
       const image = await ImageCropPicker.openPicker({
         width: 2000,
@@ -459,10 +415,11 @@ const UploadInspectionReportModal = ({
         cropping: false,
         includeBase64: false,
         compressImageQuality: 0.8,
-        multiple: true, // Enable multiple selection
+        multiple: true,
+        androidPhotoPicker: true,
       });
       
-      console.log('Image(s) selected successfully:', image);
+      
       
       // Handle both single and multiple selections
       const imagesArray = Array.isArray(image) ? image : [image];
@@ -519,7 +476,7 @@ const UploadInspectionReportModal = ({
         error.code === 'E_PICKER_CANCELLED';
       
       if (!isCancel) {
-        console.log('Gallery error:', error);
+        
         showError('Failed to launch gallery. Please try again.');
       }
     }
@@ -532,13 +489,13 @@ const UploadInspectionReportModal = ({
     }
 
     try {
-      console.log('Opening document picker...');
+     
       const results = await DocumentPicker.pick({
         type: [DocumentPicker.types.pdf, DocumentPicker.types.doc, DocumentPicker.types.docx],
         allowMultiSelection: true, // Enable multiple selection
       });
 
-      console.log('Document(s) picked:', results);
+      
 
       if (results && results.length > 0) {
         // Process each document and prompt for custom name
@@ -719,7 +676,7 @@ const UploadInspectionReportModal = ({
       const data = await response.json();
       
       if (data.success || response.status === 200) {
-        console.log('Inspection report uploaded successfully:', data);
+        
         
         // Show success message
         showSuccess('Inspection report uploaded successfully!');
